@@ -1,0 +1,19 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f0f2f5;
+  color: #111;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  outline: none;
+}
+
+input, select, textarea {
+  outline: none;
+  font-family: inherit;
+}

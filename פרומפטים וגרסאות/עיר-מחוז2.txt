@@ -1,0 +1,17 @@
+עיר	מחוז
+Langfang	Hebei
+Bazhou	Hebei
+Anji	Zhejiang
+Foshan	Guangdong
+Huizhou	Guangdong
+Shenzhen	Guangdong
+Luoyang	 Henan
+Shuyang 	Jiangsu
+Suzhou	Jiangsu
+Qingdao	Shandong
+Dezhou	Shandong
+Tianjin	Tianjin
+Fuding	Fujian
+Zhangzhou	Fujian
+Fuzhou	Fujian
+Ganzhou	JIANGXI
