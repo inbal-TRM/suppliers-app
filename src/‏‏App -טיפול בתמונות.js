@@ -15,18 +15,6 @@ const sb = {
   async upsertMeta(key,value){const r=await fetch(`${SB_URL}/rest/v1/app_meta`,{method:"POST",headers:sbH({"Prefer":"resolution=merge-duplicates,return=representation"}),body:JSON.stringify({key,value})});if(!r.ok)throw new Error(await r.text());},
   async getMeta(key){const r=await fetch(`${SB_URL}/rest/v1/app_meta?key=eq.${encodeURIComponent(key)}`,{headers:sbH({"Prefer":""})});if(!r.ok)return null;const d=await r.json();return d?.[0]?.value??null;},
   async uploadFile(path,blob,ct){const r=await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${path}`,{method:"POST",headers:{"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`,"Content-Type":ct||"image/jpeg","x-upsert":"true"},body:blob});if(!r.ok)throw new Error(await r.text());return`${SB_URL}/storage/v1/object/public/${BUCKET}/${path}`;},
-  /* ── NEW: delete a single file from storage by its public URL or path ── */
-  async deleteFile(urlOrPath){
-    try{
-      const path = urlOrPath.includes(`/object/public/${BUCKET}/`)
-        ? urlOrPath.split(`/object/public/${BUCKET}/`)[1]
-        : urlOrPath;
-      await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${path}`,{
-        method:"DELETE",
-        headers:{"apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`}
-      });
-    }catch(e){console.warn("deleteFile failed:",urlOrPath,e);}
-  },
 };
 
 /* ── Constants ── */
@@ -50,102 +38,207 @@ function addPageNumber(doc, pageWidth, pageHeight) {
   doc.setTextColor(140, 140, 140);
   doc.text(String(pageNum), pageWidth / 2, pageHeight - 6, { align: "center" });
 }
+
 function isHebrewText(text) {
   return /[\u0590-\u05FF]/.test(String(text || ""));
 }
+
 function rtl(text) {
   return String(text || "").split("").reverse().join("");
 }
+
 function formatFieldValue(label, value) {
   const str = String(value || "");
+
+  // שדות שתמיד עדיף להשאיר LTR
   const forceLtrLabels = ["טלפון", "אימייל", "תאריך", "מקור"];
   if (forceLtrLabels.includes(label)) return str;
+
   return isHebrewText(str) ? rtl(str) : str;
 }
 
+
+
 const PROVINCE_LABELS_HE = {
-  Hebei:"חביי",Zhejiang:"ג׳ג׳יאנג",Guangdong:"גואנגדונג",Shandong:"שאנדונג",
-  Henan:"חנאן",Jiangsu:"ג׳יאנגסו",Jiangxi:"ג׳יאנגשי",Fujian:"פוג׳יין",
-  Tianjin:"טיינג׳ין",Sichuan:"סצ׳ואן",Chongqing:"צ'ונגצ'ינג","אחר":"אחר"
+  Hebei: "חביי",
+  Zhejiang: "ג׳ג׳יאנג",
+  Guangdong: "גואנגדונג",
+  Shandong: "שאנדונג",
+  Henan: "חנאן",
+  Jiangsu: "ג׳יאנגסו",
+  Jiangxi: "ג׳יאנגשי",
+  Fujian: "פוג׳יין",
+  Tianjin: "טיינג׳ין",
+  Sichuan: "סצ׳ואן",
+  "אחר": "אחר"
 };
-function getProvinceHebrew(province){return PROVINCE_LABELS_HE[province]||province||"אחר";}
+
+function getProvinceHebrew(province) {
+  return PROVINCE_LABELS_HE[province] || province || "אחר";
+}
 
 const PROVINCE_COLORS = {
-  Hebei:[29,78,216],Zhejiang:[5,150,105],Guangdong:[220,38,38],Shandong:[217,119,6],
-  Henan:[124,58,237],Jiangsu:[8,145,178],Jiangxi:[190,24,93],Fujian:[22,163,74],
-  Tianjin:[75,85,99],Sichuan:[234,88,12],"אחר":[100,116,139],default:[29,78,216]
+  Hebei: [29, 78, 216],
+  Zhejiang: [5, 150, 105],
+  Guangdong: [220, 38, 38],
+  Shandong: [217, 119, 6],
+  Henan: [124, 58, 237],
+  Jiangsu: [8, 145, 178],
+  Jiangxi: [190, 24, 93],
+  Fujian: [22, 163, 74],
+  Tianjin: [75, 85, 99],
+  Sichuan: [234, 88, 12],
+  "אחר": [100, 116, 139],
+  default: [29, 78, 216]
 };
-function getProvinceColor(province){return PROVINCE_COLORS[province]||PROVINCE_COLORS.default;}
 
-function loadTesseract(){
-  return new Promise((resolve,reject)=>{
-    if(window.Tesseract){resolve(window.Tesseract);return;}
-    const s=document.createElement("script");
-    s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-    s.onload=()=>resolve(window.Tesseract);s.onerror=reject;document.head.appendChild(s);
+function getProvinceColor(province) {
+  return PROVINCE_COLORS[province] || PROVINCE_COLORS.default;
+}
+
+
+
+function loadTesseract() {
+  return new Promise((resolve, reject) => {
+    if (window.Tesseract) {
+      resolve(window.Tesseract);
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload = () => resolve(window.Tesseract);
+    s.onerror = reject;
+    document.head.appendChild(s);
   });
 }
-async function getImageDimensions(dataUrl){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();img.onload=()=>resolve({width:img.naturalWidth,height:img.naturalHeight});img.onerror=reject;img.src=dataUrl;
-  });
-}
-function fitRect(srcW,srcH,maxW,maxH){const ratio=Math.min(maxW/srcW,maxH/srcH);return{width:srcW*ratio,height:srcH*ratio};}
-async function rotateImageDataUrl(dataUrl,angle){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();
-    img.onload=()=>{
-      const sideways=angle%180!==0;
-      const canvas=document.createElement("canvas");
-      canvas.width=sideways?img.naturalHeight:img.naturalWidth;
-      canvas.height=sideways?img.naturalWidth:img.naturalHeight;
-      const ctx=canvas.getContext("2d");
-      ctx.translate(canvas.width/2,canvas.height/2);ctx.rotate((angle*Math.PI)/180);
-      ctx.drawImage(img,-img.naturalWidth/2,-img.naturalHeight/2);
-      resolve(canvas.toDataURL("image/jpeg",0.92));
+
+async function getImageDimensions(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
     };
-    img.onerror=reject;img.src=dataUrl;
+    img.onerror = reject;
+    img.src = dataUrl;
   });
 }
-async function downscaleForOcr(dataUrl,maxSize=1200){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();
-    img.onload=()=>{
-      let w=img.naturalWidth,h=img.naturalHeight;
-      if(w>maxSize){h=Math.round((h*maxSize)/w);w=maxSize;}
-      if(h>maxSize){w=Math.round((w*maxSize)/h);h=maxSize;}
-      const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
-      canvas.getContext("2d").drawImage(img,0,0,w,h);
-      resolve(canvas.toDataURL("image/jpeg",0.85));
+
+function fitRect(srcW, srcH, maxW, maxH) {
+  const ratio = Math.min(maxW / srcW, maxH / srcH);
+  return {
+    width: srcW * ratio,
+    height: srcH * ratio
+  };
+}
+async function rotateImageDataUrl(dataUrl, angle) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const sideways = angle % 180 !== 0;
+      const canvas = document.createElement("canvas");
+      canvas.width = sideways ? img.naturalHeight : img.naturalWidth;
+      canvas.height = sideways ? img.naturalWidth : img.naturalHeight;
+
+      const ctx = canvas.getContext("2d");
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((angle * Math.PI) / 180);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+
+      resolve(canvas.toDataURL("image/jpeg", 0.92));
     };
-    img.onerror=reject;img.src=dataUrl;
+    img.onerror = reject;
+    img.src = dataUrl;
   });
 }
-function scoreOcrResult(text,confidence){
-  const clean=String(text||"").trim();
-  const letters=(clean.match(/[A-Za-z\u0590-\u05FF]/g)||[]).length;
-  const digits=(clean.match(/[0-9]/g)||[]).length;
-  const words=clean.split(/\s+/).filter(Boolean).length;
-  return confidence+letters*1.5+digits*0.5+words*2;
+
+async function downscaleForOcr(dataUrl, maxSize = 1200) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+
+      if (w > maxSize) {
+        h = Math.round((h * maxSize) / w);
+        w = maxSize;
+      }
+      if (h > maxSize) {
+        w = Math.round((w * maxSize) / h);
+        h = maxSize;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
 }
-async function autoOrientBusinessCard(base64,mimeType="image/jpeg"){
-  const Tesseract=await loadTesseract();
-  const originalDataUrl=`data:${mimeType};base64,${base64}`;
-  const angles=[0,90,180,270];
-  let best={angle:0,score:-Infinity,dataUrl:originalDataUrl,confidence:0,text:""};
-  for(const angle of angles){
-    try{
-      const rotatedDataUrl=angle===0?originalDataUrl:await rotateImageDataUrl(originalDataUrl,angle);
-      const ocrInput=await downscaleForOcr(rotatedDataUrl,1200);
-      const result=await Tesseract.recognize(ocrInput,"eng");
-      const text=result?.data?.text||"";
-      const confidence=result?.data?.confidence||0;
-      const score=scoreOcrResult(text,confidence);
-      if(score>best.score)best={angle,score,dataUrl:rotatedDataUrl,confidence,text};
-    }catch(_){}
+
+
+// סיבוב תמונה
+function scoreOcrResult(text, confidence) {
+  const clean = String(text || "").trim();
+  const letters = (clean.match(/[A-Za-z\u0590-\u05FF]/g) || []).length;
+  const digits = (clean.match(/[0-9]/g) || []).length;
+  const words = clean.split(/\s+/).filter(Boolean).length;
+
+  return confidence + letters * 1.5 + digits * 0.5 + words * 2;
+}
+
+async function autoOrientBusinessCard(base64, mimeType = "image/jpeg") {
+  const Tesseract = await loadTesseract();
+  const originalDataUrl = `data:${mimeType};base64,${base64}`;
+
+  const angles = [0, 90, 180, 270];
+  let best = {
+    angle: 0,
+    score: -Infinity,
+    dataUrl: originalDataUrl,
+    confidence: 0,
+    text: ""
+  };
+
+  for (const angle of angles) {
+    try {
+      const rotatedDataUrl =
+        angle === 0 ? originalDataUrl : await rotateImageDataUrl(originalDataUrl, angle);
+
+      const ocrInput = await downscaleForOcr(rotatedDataUrl, 1200);
+      const result = await Tesseract.recognize(ocrInput, "eng");
+      const text = result?.data?.text || "";
+      const confidence = result?.data?.confidence || 0;
+      const score = scoreOcrResult(text, confidence);
+
+      if (score > best.score) {
+        best = {
+          angle,
+          score,
+          dataUrl: rotatedDataUrl,
+          confidence,
+          text
+        };
+      }
+    } catch (_) {}
   }
-  return{angle:best.angle,base64:best.dataUrl.split(",")[1],mimeType:"image/jpeg",confidence:best.confidence,text:best.text};
+
+  return {
+    angle: best.angle,
+    base64: best.dataUrl.split(",")[1],
+    mimeType: "image/jpeg",
+    confidence: best.confidence,
+    text: best.text
+  };
 }
+
+
 
 /* ── Compress ── */
 function compressImage(b64,srcType,quality=0.72){
@@ -183,30 +276,43 @@ async function callGemini(prompt,b64,mt,apiKey){
 
 /* ── Load libs ── */
 function loadJSZip(){return new Promise((res,rej)=>{if(window.JSZip){res(window.JSZip);return;}const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";s.onload=()=>res(window.JSZip);s.onerror=rej;document.head.appendChild(s);});}
+function loadHtml2pdf(){return new Promise((res,rej)=>{if(window.html2pdf){res(window.html2pdf);return;}const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";s.onload=()=>res(window.html2pdf);s.onerror=rej;document.head.appendChild(s);});}
 function loadJsPDF(){
   return new Promise((res,rej)=>{
     if(window.jspdf){res(window.jspdf.jsPDF);return;}
     const s=document.createElement("script");
     s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    s.onload=()=>res(window.jspdf.jsPDF);s.onerror=rej;document.head.appendChild(s);
+    s.onload=()=>res(window.jspdf.jsPDF);
+    s.onerror=rej;
+    document.head.appendChild(s);
   });
 }
-async function fetchFontAsBase64(url){
-  const res=await fetch(url);
-  if(!res.ok)throw new Error("לא ניתן לטעון את הפונט");
-  const buf=await res.arrayBuffer();
-  const bytes=new Uint8Array(buf);
-  const chunkSize=0x8000;let binary="";
-  for(let i=0;i<bytes.length;i+=chunkSize)binary+=String.fromCharCode(...bytes.subarray(i,i+chunkSize));
-  return btoa(binary);
-}
-async function ensureHebrewFont(doc){
-  if(doc.__hebrewFontLoaded)return;
-  const fontBase64=await fetchFontAsBase64("/fonts/NotoSansHebrew-Regular.ttf");
-  doc.addFileToVFS("NotoSansHebrew-Regular.ttf",fontBase64);
-  doc.addFont("NotoSansHebrew-Regular.ttf","NotoSansHebrew","normal");
-  doc.__hebrewFontLoaded=true;
-}
+	async function fetchFontAsBase64(url) {
+	  const res = await fetch(url);
+	  if (!res.ok) throw new Error("לא ניתן לטעון את הפונט");
+
+	  const buf = await res.arrayBuffer();
+	  const bytes = new Uint8Array(buf);
+	  const chunkSize = 0x8000;
+	  let binary = "";
+
+	  for (let i = 0; i < bytes.length; i += chunkSize) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+	  }
+
+	  return btoa(binary);
+	}
+
+	async function ensureHebrewFont(doc) {
+	  if (doc.__hebrewFontLoaded) return;
+
+	  const fontBase64 = await fetchFontAsBase64("/fonts/NotoSansHebrew-Regular.ttf");
+	  doc.addFileToVFS("NotoSansHebrew-Regular.ttf", fontBase64);
+	  doc.addFont("NotoSansHebrew-Regular.ttf", "NotoSansHebrew", "normal");
+	  doc.__hebrewFontLoaded = true;
+	}
+
+
 
 /* ── UI helpers ── */
 function Stars({value,onChange}){
@@ -289,6 +395,7 @@ function Overlay({children,onClose}){
   </div>);
 }
 
+/* ── Duplicate warning modal ── */
 function DupModal({existing,onUpdate,onNew,onClose}){
   return(<Overlay onClose={onClose}>
     <div style={{textAlign:"center"}}>
@@ -359,8 +466,23 @@ function ImageStrip({images=[],onAdd,onEdit,onDelete}){
   return(<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
     {images.map((img,i)=>(
       <div key={i} style={{position:"relative",flexShrink:0}}>
-        <img src={img.url||`data:${img.type};base64,${img.data}`}
-          style={{width:72,height:72,objectFit:"contain",borderRadius:8,border:"1px solid rgba(0,0,0,0.12)",display:"block",background:"#fff"}}/>
+	  	  
+        
+		<img
+		  src={img.url||`data:${img.type};base64,${img.data}`}
+		  style={{
+			width:72,
+			height:72,
+			objectFit:"contain",
+			borderRadius:8,
+			border:"1px solid rgba(0,0,0,0.12)",
+			display:"block",
+			background:"#fff"
+		  }}
+		/>
+		
+		
+		
         <div style={{position:"absolute",bottom:2,right:2,display:"flex",gap:2}}>
           {onEdit&&img.data&&<button onClick={()=>onEdit(i)} style={{background:"rgba(0,0,0,0.65)",border:"none",borderRadius:4,color:"#fff",fontSize:10,padding:"2px 4px",cursor:"pointer"}}>✏</button>}
           <button onClick={()=>onDelete(i)} style={{background:"rgba(220,38,38,0.8)",border:"none",borderRadius:4,color:"#fff",fontSize:10,padding:"2px 4px",cursor:"pointer"}}>✕</button>
@@ -384,30 +506,50 @@ function Section({title,icon,children,accent}){
 }
 function ActBtn({icon,label,onClick,color,bg,disabled}){
   return(<button onClick={onClick} disabled={disabled} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 14px",borderRadius:10,border:"1.5px solid rgba(0,0,0,0.14)",background:disabled?"#f3f4f6":bg||"#fff",cursor:disabled?"not-allowed":"pointer",color:disabled?"#aaa":color||"#333",fontWeight:500,fontSize:12,minWidth:72,opacity:disabled?0.6:1}}>
-  <span style={{fontSize:20}}>{icon}</span><span>{label}</span>
-</button>);
+    <span style={{fontSize:20}}>{icon}</span><span>{label}</span>
+  </button>);
 }
 
-function LoginScreen({onLogin}){
-  const [name,setName]=useState("");
-  const [key,setKey]=useState("");
-  const [exhibition,setExhibition]=useState("");
-  const [showKey,setShowKey]=useState(false);
-  const valid=name.trim()&&key.trim().length>10&&exhibition.trim();
+function LoginScreen({ onLogin }) {
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [exhibition, setExhibition] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const valid = name.trim() && key.trim().length > 10 && exhibition.trim();
   return(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f1f5f9",fontFamily:"sans-serif"}}>
     <div style={{background:"#fff",borderRadius:18,border:"1px solid rgba(0,0,0,0.1)",padding:"2rem",width:320,direction:"rtl"}}>
       <div style={{textAlign:"center",marginBottom:20}}><div style={{fontSize:36,marginBottom:6}}>🏭</div><div style={{fontSize:20,fontWeight:700,marginBottom:4}}>ניהול ספקים</div></div>
-      <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>שם משתמש</label>
+      
+	  <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>שם משתמש</label>
       <input value={name} onChange={e=>setName(e.target.value)} placeholder="השם שלך..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",fontSize:14,borderRadius:9,border:"1.5px solid rgba(0,0,0,0.18)",outline:"none",marginBottom:14,textAlign:"right"}}/>
-      <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>תערוכה</label>
-      <input value={exhibition} onChange={e=>setExhibition(e.target.value)} placeholder="שם התערוכה..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",fontSize:14,borderRadius:9,border:"1.5px solid rgba(0,0,0,0.18)",outline:"none",marginBottom:14,textAlign:"right"}}/>
-      <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>Gemini API Key <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2563eb",marginRight:6,fontWeight:400}}>קבל key חינמי ←</a></label>
+      
+	  <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>
+		  תערוכה
+		</label>
+		<input
+		  value={exhibition}
+		  onChange={e => setExhibition(e.target.value)}
+		  placeholder="שם התערוכה..."
+		  style={{
+			width:"100%",
+			boxSizing:"border-box",
+			padding:"9px 12px",
+			fontSize:14,
+			borderRadius:9,
+			border:"1.5px solid rgba(0,0,0,0.18)",
+			outline:"none",
+			marginBottom:14,
+			textAlign:"right"
+		  }}
+		/>
+	  
+	  <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>Gemini API Key <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2563eb",marginRight:6,fontWeight:400}}>קבל key חינמי ←</a></label>
       <div style={{position:"relative",marginBottom:16}}>
         <input value={key} onChange={e=>setKey(e.target.value)} type={showKey?"text":"password"} placeholder="AIza..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",paddingLeft:36,fontSize:13,borderRadius:9,border:"1.5px solid rgba(0,0,0,0.18)",outline:"none",textAlign:"left",direction:"ltr"}}/>
         <button onClick={()=>setShowKey(v=>!v)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#888"}}>{showKey?"🙈":"👁"}</button>
       </div>
       <div style={{fontSize:11,color:"#aaa",marginBottom:16}}>ה-key נשמר רק במכשיר שלך</div>
-      <button onClick={()=>valid&&onLogin(name.trim(),key.trim(),exhibition.trim())} disabled={!valid} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:valid?"#1d4ed8":"#93c5fd",cursor:valid?"pointer":"default",fontSize:15,fontWeight:600,color:"#fff"}}>כניסה</button>
+      <button onClick={() => valid && onLogin(name.trim(), key.trim(), exhibition.trim())} disabled={!valid} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:valid?"#1d4ed8":"#93c5fd",cursor:valid?"pointer":"default",fontSize:15,fontWeight:600,color:"#fff"}}>כניסה</button>
     </div>
   </div>);
 }
@@ -418,6 +560,7 @@ const EMPTY_PROD={description:"",images:[],rating:0};
 
 export default function App(){
   const [user,setUser]=useState(null);
+  
   const [view,setView]=useState("list");
   const [suppliers,setSuppliers]=useState([]);
   const [selSup,setSelSup]=useState(null);
@@ -435,10 +578,11 @@ export default function App(){
   const [filterExhibition,setFilterExhibition]=useState("");
   const [errors,setErrors]=useState({});
   const [editImgCtx,setEditImgCtx]=useState(null);
+  //const [defaultSource,setDefaultSource]=useState("");
   const [msg,setMsg]=useState("");
   const [msgOk,setMsgOk]=useState(true);
   const [exporting,setExporting]=useState(false);
-  const [dupModal,setDupModal]=useState(null);
+  const [dupModal,setDupModal]=useState(null); // {existing, pendingForm}
   const importSupRef=useRef();
 
   const showMsg=(text,ok=true)=>{setMsg(text);setMsgOk(ok);setTimeout(()=>setMsg(""),5000);};
@@ -453,63 +597,136 @@ export default function App(){
   useEffect(()=>{
     const saved=localStorage.getItem("supplier_user");
     if(saved)try{setUser(JSON.parse(saved));}catch(_){}
+    //sb.getMeta("defaultSource_"+todayStr()).then(v=>{if(v)setDefaultSource(v);}).catch(()=>{});
     loadSuppliers();
   },[loadSuppliers]);
 
-  function handleLogin(name,key,exhibition){const u={name,key,exhibition};setUser(u);localStorage.setItem("supplier_user",JSON.stringify(u));}
+  function handleLogin(name, key, exhibition) {
+	  const u = { name, key, exhibition };
+	  setUser(u);
+	  localStorage.setItem("supplier_user", JSON.stringify(u));
+	}
+
   function handleLogout(){setUser(null);localStorage.removeItem("supplier_user");}
 
   const loadProducts=async sid=>{if(!sid)return;const d=await sb.select("products",`supplier_id=eq.${sid}&select=*`);setProducts(d||[]);};
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
+  //const saveDefaultSource=async val=>{setDefaultSource(val);await sb.upsertMeta("defaultSource_"+todayStr(),val).catch(()=>{});};
 
+  /* ── Upload helper ── */
   async function uploadImg(b64,type,path){
     const c=await compressImage(b64,type);
     return sb.uploadFile(path,c.blob,"image/jpeg");
   }
 
-  const handleCardFile=async(file)=>{
-    setExtracting(true);
-    try{
-      const raw=await fileToBase64(file);
-      const oriented=await autoOrientBusinessCard(raw,file.type);
-      setForm(f=>({...f,_cardPreview:oriented.base64,_cardPreviewType:oriented.mimeType}));
-      if(!user?.key){showMsg("אין Gemini API key",false);setExtracting(false);return;}
-      const txt=await callGemini(
-        "Business card image. Extract: name (company/supplier), contact (person name), email, phone, city (English city name only). Return ONLY valid JSON: {name,contact,email,phone,city}. No markdown.",
-        oriented.base64,oriented.mimeType,user.key
-      );
-      try{
-        const p=JSON.parse(txt.replace(/```json|```/g,"").trim());
-        const rawCity=(p.city||"").trim();
-        const matched=CITIES.find(c=>c.toLowerCase()===rawCity.toLowerCase())||rawCity;
-        setForm(f=>({...f,_cardPreview:oriented.base64,_cardPreviewType:oriented.mimeType,
-          name:p.name||f.name,contact:p.contact||f.contact,phone:p.phone||f.phone,
-          email:p.email||f.email,city:matched||f.city,province:getProvince(matched)||f.province}));
-        showMsg(`פרטים חולצו ✓ (סיבוב ${oriented.angle}°)`,true);
-      }catch(_){showMsg(`התמונה סובבה (${oriented.angle}°), לא ניתן לפרסר`,false);}
-    }catch(e){showMsg("שגיאה: "+e.message,false);}
-    setExtracting(false);
-  };
+  /* ── Card file ── */
+	const handleCardFile = async (file) => {
+	  setExtracting(true);
+
+	  try {
+		const raw = await fileToBase64(file);
+
+		// ✅ סיבוב חכם לפי OCR ב-4 כיוונים, לפני כל שמירה
+		const oriented = await autoOrientBusinessCard(raw, file.type);
+
+		// נשמור כבר את הגרסה התקינה ב-state
+		setForm((f) => ({
+		  ...f,
+		  _cardPreview: oriented.base64,
+		  _cardPreviewType: oriented.mimeType
+		}));
+
+		if (!user?.key) {
+		  showMsg("אין Gemini API key", false);
+		  setExtracting(false);
+		  return;
+		}
+
+		// Gemini יקבל כבר את התמונה המסובבת נכון
+		const txt = await callGemini(
+		  "Business card image. Extract: name (company/supplier), contact (person name), email, phone, city (English city name only). Return ONLY valid JSON: {name,contact,email,phone,city}. No markdown.",
+		  oriented.base64,
+		  oriented.mimeType,
+		  user.key
+		);
+
+		try {
+		  const p = JSON.parse(txt.replace(/```json|```/g, "").trim());
+		  const rawCity = (p.city || "").trim();
+		  const matched = CITIES.find((c) => c.toLowerCase() === rawCity.toLowerCase()) || rawCity;
+
+		  setForm((f) => ({
+			...f,
+			_cardPreview: oriented.base64,
+			_cardPreviewType: oriented.mimeType,
+			name: p.name || f.name,
+			contact: p.contact || f.contact,
+			phone: p.phone || f.phone,
+			email: p.email || f.email,
+			city: matched || f.city,
+			province: getProvince(matched) || f.province
+		  }));
+
+		  showMsg(`פרטים חולצו ✓ (סיבוב ${oriented.angle}°)`, true);
+		} catch (_) {
+		  showMsg(`התמונה סובבה בהצלחה (${oriented.angle}°), אך לא ניתן לפרסר תשובה`, false);
+		}
+	  } catch (e) {
+		showMsg("שגיאה: " + e.message, false);
+	  }
+
+	  setExtracting(false);
+	};
+
+
+
+
+
+
 
   const validate=()=>{const e={};if(!form.name.trim())e.name="שם ספק חובה";setErrors(e);return!Object.keys(e).length;};
-  function findDuplicate(name){return suppliers.find(s=>s.id!==selSup?.id&&similarity(s.name,name.trim())>0.8);}
 
+  /* ── Check duplicate ── */
+  function findDuplicate(name){
+    return suppliers.find(s=>s.id!==selSup?.id&&similarity(s.name,name.trim())>0.8);
+  }
+
+  /* ── Save ── */
   const doSave=async(forceNew=false)=>{
     setSaving(true);const now=nowISO();
     try{
+      //if(form.source)await saveDefaultSource(form.source);
       let cardUrl=form.cardImageUrl||"";
       if(form._cardPreview){
         const path=`cards/${selSup?.id||"new"}_${Date.now()}.jpg`;
         cardUrl=await uploadImg(form._cardPreview,form._cardPreviewType||"image/jpeg",path);
       }
-      const payload={name:form.name,contact:form.contact,phone:form.phone,email:form.email,
-        city:form.city,province:form.province,fields:form.fields,description:form.description,
-        rating:form.rating,source:user?.exhibition||"",date:form.date||todayStr(),
-        card_image_url:cardUrl,updated_at:now,updated_by:userName};
+	  
+	  
+      //const payload={name:form.name,contact:form.contact,phone:form.phone,email:form.email,city:form.city,province:form.province,fields:form.fields,description:form.description,rating:form.rating,source:form.source,date:form.date||todayStr(),card_image_url:cardUrl,updated_at:now,updated_by:userName};
+	  const payload = {
+		  name: form.name,
+		  contact: form.contact,
+		  phone: form.phone,
+		  email: form.email,
+		  city: form.city,
+		  province: form.province,
+		  fields: form.fields,
+		  description: form.description,
+		  rating: form.rating,
+		  source: user?.exhibition || "",
+		  date: form.date || todayStr(),
+		  card_image_url: cardUrl,
+		  updated_at: now,
+		  updated_by: userName
+		};
+	  
+	  
+	  
       if(selSup&&!forceNew){
         await sb.update("suppliers",selSup.id,payload);
         setSelSup(s=>({...s,...payload,id:selSup.id}));
-      }else{
+      } else {
         const created=await sb.insert("suppliers",{...payload,created_at:now,created_by:userName});
         setSelSup(created);await loadProducts(created.id);
       }
@@ -523,36 +740,23 @@ export default function App(){
 
   const handleSave=async()=>{
     if(!validate())return;
-    if(!selSup){const dup=findDuplicate(form.name);if(dup){setDupModal({existing:dup});return;}}
+    if(!selSup){
+      const dup=findDuplicate(form.name);
+      if(dup){setDupModal({existing:dup});return;}
+    }
     await doSave();
   };
 
   const openEdit=async s=>{
     setSelSup(s);
-    setForm({name:s.name||"",contact:s.contact||"",phone:s.phone||"",email:s.email||"",
-      city:s.city||"",province:s.province||"",fields:s.fields||[],description:s.description||"",
-      rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,date:s.date||todayStr()});
+    setForm({name:s.name||"",contact:s.contact||"",phone:s.phone||"",email:s.email||"",city:s.city||"",province:s.province||"",fields:s.fields||[],description:s.description||"",rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,date:s.date||todayStr()});
     setErrors({});await loadProducts(s.id);setView("form");
   };
 
-  /* ── DELETE SUPPLIER + all storage files ── */
   const handleDelSup=async id=>{
-    if(!window.confirm("למחוק ספק זה? כל התמונות שלו יימחקו גם מהאחסון."))return;
-    try{
-      const sup=suppliers.find(s=>s.id===id);
-      // collect all file URLs
-      const urls=[];
-      if(sup?.card_image_url)urls.push(sup.card_image_url);
-      const prods=await sb.select("products",`supplier_id=eq.${id}&select=*`);
-      for(const p of prods)for(const img of(p.images||[]))if(img.url)urls.push(img.url);
-      // delete files from storage
-      for(const url of urls)await sb.deleteFile(url);
-      // delete from DB (products cascade via FK)
-      await sb.delete("suppliers",id);
-      await loadSuppliers();
-      if(selSup?.id===id){setView("list");setSelSup(null);}
-      showMsg("הספק נמחק ✓",true);
-    }catch(e){showMsg("שגיאה במחיקה: "+e.message,false);}
+    if(!window.confirm("למחוק ספק זה?"))return;
+    await sb.delete("suppliers",id);await loadSuppliers();
+    if(selSup?.id===id){setView("list");setSelSup(null);}
   };
 
   const openProdModal=p=>{setEditProd(p||null);setProdForm(p?{description:p.description||"",images:p.images||[],rating:p.rating||0}:{...EMPTY_PROD,images:[]});setProdModal(true);};
@@ -573,32 +777,28 @@ export default function App(){
     await loadProducts(sid);setProdModal(false);
   };
 
-  /* ── DELETE PRODUCT + its storage files ── */
-  const handleDelProd=async id=>{
-    if(!window.confirm("למחוק מוצר זה? התמונות שלו יימחקו גם מהאחסון."))return;
-    try{
-      const prod=products.find(p=>p.id===id);
-      for(const img of(prod?.images||[]))if(img.url)await sb.deleteFile(img.url);
-      await sb.delete("products",id);
-      await loadProducts(selSup.id);
-      showMsg("המוצר נמחק ✓",true);
-    }catch(e){showMsg("שגיאה: "+e.message,false);}
-  };
+  const handleDelProd=async id=>{if(!window.confirm("למחוק?"))return;await sb.delete("products",id);await loadProducts(selSup.id);};
 
-  /* ── Sorted + filtered ── */
+  /* ── Sorted suppliers ── */
   const sorted=[...suppliers].sort((a,b)=>{
     const pc=(a.province||"").localeCompare(b.province||"");
     return pc!==0?pc:(a.name||"").localeCompare(b.name||"");
   });
-  const filtered=sorted.filter(s=>{
-    const q=search.toLowerCase();
-    const eq=filterExhibition.toLowerCase();
-    return(!q||s.name?.toLowerCase().includes(q)||s.contact?.toLowerCase().includes(q))&&
-      (!filterProvince||s.province===filterProvince)&&
-      (!filterField||(s.fields||[]).includes(filterField))&&
-      (!eq||(s.source||"").toLowerCase().includes(eq));
-  });
 
+  const filtered = sorted.filter(s => {
+	  const q = search.toLowerCase();
+	  const exhibitionQ = filterExhibition.toLowerCase();
+
+	  return (
+		(!q ||
+		  s.name?.toLowerCase().includes(q) ||
+		  s.contact?.toLowerCase().includes(q)) &&
+		(!filterProvince || s.province === filterProvince) &&
+		(!filterField || (s.fields || []).includes(filterField)) &&
+		(!exhibitionQ || (s.source || "").toLowerCase().includes(exhibitionQ))
+	  );
+	});
+	
   /* ── CSV ── */
   function buildCSV(allS,allP){
     let c="\uFEFFאינדקס,שם ספק,מקור,תאריך,איש קשר,טלפון,אימייל,עיר,מחוז,תחום עיסוק,תיאור,דירוג,נוצר,נוצר ע\"י,עודכן,עודכן ע\"י\n";
@@ -633,300 +833,429 @@ export default function App(){
     setExporting(false);
   };
 
-  /* ── PDF – מוצר אחד בשורה, כל התמונות ── */
-  const downloadPDF=async()=>{
-    setExporting(true);showMsg("מייצר PDF...",true);
-    try{
-      const JsPDF=await loadJsPDF();
-      const doc=new JsPDF({orientation:"p",unit:"mm",format:"a4"});
-      await ensureHebrewFont(doc);
-      doc.setFont("NotoSansHebrew","normal");
+  
+  const PROVINCE_LABELS_HE = {
+	  Hebei: "חביי",
+	  Zhejiang: "ג׳ג׳יאנג",
+	  Guangdong: "גואנגדונג",
+	  Shandong: "שאנדונג",
+	  Henan: "חנאן",
+	  Jiangsu: "ג׳יאנגסו",
+	  Jiangxi: "ג׳יאנגשי",
+	  Fujian: "פוג׳יין",
+	  Tianjin: "טיינג׳ין",
+	  Sichuan: "סצ׳ואן",
+	  Chongqing: "צ'ונגצ'ינג",
+	  "אחר": "אחר"
+	};
 
-      const pageWidth=210,pageHeight=297,margin=12,contentWidth=pageWidth-margin*2;
-      const labelColWidth=34,gap=4;
-      const valueColX=margin,valueColWidth=contentWidth-labelColWidth-gap;
-      const labelColX=pageWidth-margin;
-      let y=margin;
+	function getProvinceHebrew(province) {
+	  return PROVINCE_LABELS_HE[province] || province || "אחר";
+	}
+  
+  
+	const PROVINCE_COLORS = {
+	  Hebei: [29, 78, 216],       // כחול
+	  Zhejiang: [5, 150, 105],    // ירוק
+	  Guangdong: [220, 38, 38],   // אדום
+	  Shandong: [217, 119, 6],    // כתום
+	  Henan: [124, 58, 237],      // סגול
+	  Jiangsu: [8, 145, 178],     // טורקיז
+	  Jiangxi: [190, 24, 93],     // ורוד כהה
+	  Fujian: [22, 163, 74],      // ירוק כהה
+	  Tianjin: [75, 85, 99],      // אפור כחול
+	  Sichuan: [234, 88, 12],     // כתום כהה
+	  "אחר": [100, 116, 139],     // אפור
+	  default: [29, 78, 216]
+	};
 
-      const allSRaw=await sb.select("suppliers","select=*");
-      const allP=await sb.select("products","select=*");
-      const allS=[...allSRaw].sort((a,b)=>{
-        const pc=(a.province||"").localeCompare(b.province||"");
-        return pc!==0?pc:(a.name||"").localeCompare(b.name||"");
-      });
+	function getProvinceColor(province) {
+	  return PROVINCE_COLORS[province] || PROVINCE_COLORS.default;
+	}
+  
+  /* ── PDF ── */
+   
+const downloadPDF = async () => {
+  setExporting(true);
+  showMsg("מייצר PDF...", true);
 
-      const chkPage=(need=10)=>{
-        if(y+need>pageHeight-margin){addPageNumber(doc,pageWidth,pageHeight);doc.addPage();doc.setFont("NotoSansHebrew","normal");y=margin;}
-      };
-      const fetchDataUrl=async url=>{
-        try{const r=await fetch(url);const blob=await r.blob();return await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(blob);});}
-        catch{return null;}
-      };
+  try {
+    const JsPDF = await loadJsPDF();
+    const doc = new JsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
-      // ── Cover page ──
-      doc.setFontSize(20);doc.setTextColor(29,78,216);
-      doc.text(rtl("דוח ספקים"),pageWidth-margin,28,{align:"right"});
-      doc.setFontSize(11);doc.setTextColor(80,80,80);
-      doc.text(rtl("תאריך הפקה:"),pageWidth-margin,40,{align:"right"});
-      doc.text(new Date().toLocaleDateString("he-IL"),valueColX,40,{align:"left"});
-      doc.text(rtl("מספר ספקים:"),pageWidth-margin,48,{align:"right"});
-      doc.text(String(allS.length),valueColX,48,{align:"left"});
-      y=65;
-      const provinces=[...new Set(allS.map(s=>s.province||"אחר"))];
-      doc.setFontSize(12);doc.setTextColor(29,78,216);
-      doc.text(rtl("מחוזות כלולים"),pageWidth-margin,y,{align:"right"});y+=10;
-      doc.setFontSize(10);doc.setTextColor(50,50,50);
-      for(const p of provinces){
-        chkPage(7);
-        doc.text(rtl(getProvinceHebrew(p)),pageWidth-margin,y,{align:"right"});
-        doc.text(p,valueColX,y,{align:"left"});y+=6;
+    await ensureHebrewFont(doc);
+    doc.setFont("NotoSansHebrew", "normal");
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margin = 12;
+    const contentWidth = pageWidth - margin * 2;
+    const labelColWidth = 34;
+    const gap = 4;
+    const valueColX = margin;
+    const valueColWidth = contentWidth - labelColWidth - gap;
+    const labelColX = pageWidth - margin;
+
+    let y = margin;
+
+    const allSRaw = await sb.select("suppliers", "select=*");
+    const allP = await sb.select("products", "select=*");
+
+    const allS = [...allSRaw].sort((a, b) => {
+      const provinceCompare = (a.province || "").localeCompare(b.province || "");
+      if (provinceCompare !== 0) return provinceCompare;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+
+    const addPageIfNeeded = (needed = 10) => {
+      if (y + needed > pageHeight - margin) {
+        addPageNumber(doc, pageWidth, pageHeight);
+        doc.addPage();
+        doc.setFont("NotoSansHebrew", "normal");
+        y = margin;
       }
-      addPageNumber(doc,pageWidth,pageHeight);doc.addPage();y=margin;
+    };
 
-      let currentProvince=null;
+    const fetchAsDataUrl = async (url) => {
+      try {
+        const r = await fetch(url);
+        const blob = await r.blob();
+        return await new Promise((resolve) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.readAsDataURL(blob);
+        });
+      } catch {
+        return null;
+      }
+    };
 
-      for(let si=0;si<allS.length;si++){
-        const s=allS[si];
-        const prods=allP.filter(p=>p.supplier_id===s.id);
-        const province=s.province||"אחר";
-        const provinceHe=getProvinceHebrew(province);
-        const provinceColor=getProvinceColor(province);
+    let currentProvince = null;
 
-        // Province divider
-        if(province!==currentProvince){
-          if(currentProvince!==null){addPageNumber(doc,pageWidth,pageHeight);doc.addPage();doc.setFont("NotoSansHebrew","normal");y=margin;}
-          currentProvince=province;
-          doc.setFillColor(...provinceColor);doc.roundedRect(margin,y,contentWidth,16,2,2,"F");
-          doc.setTextColor(255,255,255);doc.setFontSize(12);
-          doc.text(rtl("מחוז"),pageWidth-margin-3,y+6,{align:"right"});
-          doc.setFontSize(11);
-          doc.text(rtl(provinceHe),pageWidth-margin-3,y+12,{align:"right"});
-          doc.text(province,margin+3,y+12,{align:"left"});
-          y+=22;
+    // עמוד פתיחה
+    doc.setFontSize(20);
+    doc.setTextColor(29, 78, 216);
+    doc.text(rtl("דוח ספקים"), pageWidth - margin, 28, { align: "right" });
+
+    doc.setFontSize(11);
+    doc.setTextColor(80, 80, 80);
+    doc.text(rtl(`תאריך הפקה:`), pageWidth - margin, 40, { align: "right" });
+    doc.text(new Date().toLocaleDateString("he-IL"), valueColX, 40, { align: "left" });
+
+    doc.text(rtl(`מספר ספקים:`), pageWidth - margin, 48, { align: "right" });
+    doc.text(String(allS.length), valueColX, 48, { align: "left" });
+
+    y = 65;
+
+    const provinces = [...new Set(allS.map((s) => s.province || "אחר"))];
+
+    doc.setFontSize(12);
+    doc.setTextColor(29, 78, 216);
+    doc.text(rtl("מחוזות כלולים בדוח"), pageWidth - margin, y, { align: "right" });
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setTextColor(50, 50, 50);
+    for (const p of provinces) {
+      addPageIfNeeded(7);
+      doc.text(rtl(getProvinceHebrew(p)), pageWidth - margin, y, { align: "right" });
+      doc.text(p, valueColX, y, { align: "left" });
+      y += 6;
+    }
+
+    addPageNumber(doc, pageWidth, pageHeight);
+    doc.addPage();
+    y = margin;
+
+    for (let si = 0; si < allS.length; si++) {
+      const s = allS[si];
+      const prods = allP.filter((p) => p.supplier_id === s.id);
+      const province = s.province || "אחר";
+      const provinceHe = getProvinceHebrew(province);
+      const provinceColor = getProvinceColor(province);
+
+      // כל מחוז מתחיל עמוד חדש
+      if (province !== currentProvince) {
+        if (currentProvince !== null) {
+          addPageNumber(doc, pageWidth, pageHeight);
+          doc.addPage();
+          doc.setFont("NotoSansHebrew", "normal");
+          y = margin;
         }
+        currentProvince = province;
 
-        chkPage(90);
+        doc.setFillColor(...provinceColor);
+        doc.roundedRect(margin, y, contentWidth, 16, 2, 2, "F");
 
-        // Supplier header
-        doc.setFillColor(...provinceColor);doc.roundedRect(margin,y,contentWidth,10,2,2,"F");
-        doc.setTextColor(255,255,255);doc.setFontSize(12);
-        if(isHebrewText(s.name||""))doc.text(rtl(`#${s.id}  ${s.name||""}`),pageWidth-margin-3,y+6.8,{align:"right"});
-        else doc.text(`${s.name||""}  #${s.id}`,margin+3,y+6.8,{align:"left"});
-        y+=14;
-        doc.setTextColor(20,20,20);doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(12);
+        doc.text(rtl("מחוז"), pageWidth - margin - 3, y + 6, { align: "right" });
 
-        // Info rows
-        const rows=[
-          ["מקור",s.source],["תאריך",s.date],["איש קשר",s.contact],
-          ["טלפון",s.phone],["אימייל",s.email],["עיר",s.city],
-          ["מחוז",s.province],["תחומים",(s.fields||[]).join(", ")],
-          ["דירוג",s.rating?"★".repeat(s.rating):""],["תיאור",s.description],
-        ].filter(([,v])=>v);
-        for(const [label,value] of rows){
-          chkPage(8);
-          doc.setTextColor(...provinceColor);doc.text(rtl(`${label}:`),labelColX,y,{align:"right"});
-          doc.setTextColor(30,30,30);
-          const pv=formatFieldValue(label,value);
-          const lines=doc.splitTextToSize(pv,valueColWidth);
-          doc.text(lines,valueColX,y,{align:"left"});
-          y+=Math.max(6,lines.length*5);
-        }
+        doc.setFontSize(11);
+        doc.text(rtl(provinceHe), pageWidth - margin - 3, y + 12, { align: "right" });
+        doc.text(province, margin + 3, y + 12, { align: "left" });
 
-        // Card image
-        if(s.card_image_url){
-          const dataUrl=await fetchDataUrl(s.card_image_url);
-          if(dataUrl){
-            try{
-              const dims=await getImageDimensions(dataUrl);
-              const frameW=50,frameH=33;
-              const fitted=fitRect(dims.width,dims.height,frameW,frameH);
-              chkPage(frameH+8);
-              doc.setFillColor(255,255,255);doc.setDrawColor(220,220,220);
-              doc.roundedRect(margin,y,frameW,frameH,1.5,1.5,"FD");
-              doc.addImage(dataUrl,"JPEG",margin+(frameW-fitted.width)/2,y+(frameH-fitted.height)/2,fitted.width,fitted.height);
-              y+=frameH+5;
-            }catch(_){}
-          }
-        }
-
-        if(s.updated_at){
-          chkPage(8);doc.setFontSize(8);doc.setTextColor(120,120,120);
-          doc.text(`Updated by ${s.updated_by||""} · ${new Date(s.updated_at).toLocaleString("he-IL")}`,valueColX,y,{align:"left"});
-          y+=8;
-        }
-
-        // Products – smart layout: 2-per-row if ≤3 images, else 1-per-row
-        if(prods.length>0){
-          chkPage(10);
-          doc.setFontSize(11);doc.setTextColor(...provinceColor);
-          doc.text(rtl(`מוצרים (${prods.length})`),labelColX,y,{align:"right"});
-          y+=8;
-
-          // pre-fetch all image dataUrls so we can decide layout
-          const prodDataUrls=[];
-          for(const p of prods){
-            const urls=[];
-            for(const img of(p.images||[])){
-              if(!img.url){urls.push(null);continue;}
-              urls.push(await fetchDataUrl(img.url));
-            }
-            prodDataUrls.push(urls);
-          }
-
-          // IMG sizing constants
-          const IMG_W_SINGLE=34, IMG_H_SINGLE=26, IMG_GAP=3;
-          const COL_GAP=6;
-          const colW=(contentWidth-COL_GAP)/2;  // width of one 2-up column
-
-          // how many images fit in a single column (2-up layout)
-          const imgsPerRow2up=Math.floor((colW-4+IMG_GAP)/(IMG_W_SINGLE+IMG_GAP)); // ~3
-          const THRESHOLD=imgsPerRow2up; // if more images than this → go 1-up
-
-          // draw one product card
-          const drawProduct=async(p,dataUrls,xBase,cardW,startY)=>{
-            let iy=startY;
-            const innerW=cardW-6;
-
-            // header
-            doc.setFillColor(245,247,250);doc.setDrawColor(...provinceColor);
-            doc.roundedRect(xBase,iy,cardW,7,1,1,"FD");
-            doc.setFontSize(9);doc.setTextColor(...provinceColor);
-            doc.text(rtl(`מוצר #${p.id}`),xBase+cardW-3,iy+5,{align:"right"});
-            if(p.rating){doc.setTextColor(180,120,0);doc.text("★".repeat(p.rating),xBase+3,iy+5,{align:"left"});}
-            iy+=9;
-
-            // description
-            doc.setTextColor(30,30,30);doc.setFontSize(9);
-            const desc=isHebrewText(p.description||"")?rtl(p.description||"ללא תיאור"):(p.description||"ללא תיאור");
-            const descLines=doc.splitTextToSize(desc,innerW);
-			iy += 1;
-
-			doc.text(descLines, xBase + cardW - 2, iy, { align: "right" });
-            iy+=descLines.length*4+2;
-
-            // images
-            const validImgs=dataUrls.filter(Boolean);
-            if(validImgs.length>0){
-              let ix=xBase+3;
-              let rowY=iy;
-              for(let vi=0;vi<validImgs.length;vi++){
-                const dataUrl=validImgs[vi];
-                if(ix+IMG_W_SINGLE>xBase+cardW-3){
-                  rowY+=IMG_H_SINGLE+IMG_GAP;ix=xBase+3;
-                }
-                try{
-                  const dims=await getImageDimensions(dataUrl);
-                  const fitted=fitRect(dims.width,dims.height,IMG_W_SINGLE,IMG_H_SINGLE);
-                  doc.setFillColor(255,255,255);doc.setDrawColor(220,220,220);
-                  doc.roundedRect(ix,rowY,IMG_W_SINGLE,IMG_H_SINGLE,1,1,"FD");
-                  doc.addImage(dataUrl,"JPEG",ix+(IMG_W_SINGLE-fitted.width)/2,rowY+(IMG_H_SINGLE-fitted.height)/2,fitted.width,fitted.height);
-                }catch(_){}
-                ix+=IMG_W_SINGLE+IMG_GAP;
-              }
-              iy=rowY+IMG_H_SINGLE+3;
-            }
-
-            // timestamp
-            if(p.updated_at){
-              doc.setFontSize(7);doc.setTextColor(120,120,120);
-              doc.text(`Updated by ${p.updated_by||""} · ${new Date(p.updated_at).toLocaleString("he-IL")}`,xBase+3,iy,{align:"left"});
-              iy+=4;
-            }
-            return iy-startY; // height used
-          };
-
-          // estimate card height (without drawing) for page-break decisions
-          const estimateH=(p,dataUrls)=>{
-            let h=9; // header
-            const desc=isHebrewText(p.description||"")?rtl(p.description||""):( p.description||"");
-            const lines=doc.splitTextToSize(desc,(contentWidth-6)/2);
-            h+=lines.length*4+2;
-            const n=dataUrls.filter(Boolean).length;
-            if(n>0){
-              const cols=Math.floor(((contentWidth/2)-6+IMG_GAP)/(IMG_W_SINGLE+IMG_GAP));
-              h+=Math.ceil(n/Math.max(cols,1))*(IMG_H_SINGLE+IMG_GAP);
-            }
-            if(p.updated_at)h+=4;
-            return h+2;
-          };
-
-          // process products in pairs (2-up) or singles (1-up)
-          let pi=0;
-          while(pi<prods.length){
-            const p=prods[pi];
-            const urls=prodDataUrls[pi];
-            const imgCount=(p.images||[]).length;
-            const use1up=imgCount>THRESHOLD;
-
-            if(use1up){
-              // 1-up: full width
-              const eh=estimateH(p,urls)+6;
-              chkPage(eh);
-              const used=await drawProduct(p,urls,margin,contentWidth,y);
-              y+=used+4;
-              pi++;
-            } else {
-              // 2-up: pair this product with the next (if next also fits 2-up)
-              const p2=prods[pi+1];
-              const urls2=p2?prodDataUrls[pi+1]:null;
-              const next2up=p2&&(p2.images||[]).length<=THRESHOLD;
-
-              if(next2up){
-                const eh=Math.max(estimateH(p,urls),estimateH(p2,urls2))+6;
-                chkPage(eh);
-                const leftX=margin+colW+COL_GAP; // RTL: first product on right
-                const rightX=margin;
-                const [h1,h2]=await Promise.all([
-                  drawProduct(p,urls,leftX,colW,y),
-                  drawProduct(p2,urls2,rightX,colW,y)
-                ]);
-                y+=Math.max(h1,h2)+4;
-                pi+=2;
-              } else {
-                // last product, no pair – draw full width
-                const eh=estimateH(p,urls)+6;
-                chkPage(eh);
-                const used=await drawProduct(p,urls,margin,contentWidth,y);
-                y+=used+4;
-                pi++;
-              }
-            }
-          }
-        }
-        y+=4;
+        y += 22;
       }
 
-      addPageNumber(doc,pageWidth,pageHeight);
-      doc.save(`suppliers_${dtLabel()}.pdf`);
-      showMsg("✓ PDF הורד",true);
-    }catch(e){showMsg("שגיאה PDF: "+e.message,false);}
-    setExporting(false);
-  };
+      addPageIfNeeded(90);
 
-  /* ── Import CSV ── */
-  const importCSV=async file=>{
-    showMsg("מייבא...",true);
-    try{
-      const text=await file.text();const lines=text.split("\n").filter(l=>l.trim());
-      let start=0;for(let i=0;i<lines.length;i++){if(lines[i].includes("אינדקס")||lines[i].toLowerCase().includes("name")){start=i+1;break;}}
-      let count=0;const now=nowISO();
-      for(let i=start;i<lines.length;i++){
-        const cols=lines[i].match(/(".*?"|[^,]+)(?=,|$)/g)||[];
-        const c=cols.map(x=>x.replace(/^"|"$/g,"").trim());
-        if(c.length<2||!c[1])continue;
-        await sb.insert("suppliers",{name:c[1],source:c[2]||"",date:c[3]||todayStr(),contact:c[4]||"",phone:c[5]||"",email:c[6]||"",city:c[7]||"",province:c[8]||"",fields:(c[9]||"").split(",").map(s=>s.trim()).filter(Boolean),description:c[10]||"",rating:parseInt(c[11])||0,created_at:now,created_by:"import",updated_at:now,updated_by:"import"});
-        count++;
+      // Header ספק
+      doc.setFillColor(...provinceColor);
+      doc.roundedRect(margin, y, contentWidth, 10, 2, 2, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(12);
+
+      if (isHebrewText(s.name || "")) {
+        doc.text(rtl(`#${s.id}  ${s.name || ""}`), pageWidth - margin - 3, y + 6.8, { align: "right" });
+      } else {
+        doc.text(`${s.name || ""}  #${s.id}`, margin + 3, y + 6.8, { align: "left" });
       }
-      await loadSuppliers();showMsg(`יובאו ${count} ספקים ✓`,true);
-    }catch(e){showMsg("שגיאה: "+e.message,false);}
-  };
 
-  const allUsedProvinces=[...new Set(suppliers.map(s=>s.province).filter(Boolean))].sort();
-  const allUsedFields=[...new Set(suppliers.flatMap(s=>s.fields||[]))].sort();
-  const CS={background:"#fff",borderRadius:14,border:"1px solid rgba(0,0,0,0.1)",padding:"1.25rem",marginBottom:14};
-  const BP={padding:"10px",borderRadius:9,border:"none",background:"#1d4ed8",cursor:"pointer",fontSize:14,fontWeight:500,color:"#fff"};
+      y += 14;
 
-  if(!user)return<LoginScreen onLogin={handleLogin}/>;
+      doc.setTextColor(20, 20, 20);
+      doc.setFontSize(10);
+
+      const rows = [
+        ["מקור", s.source],
+        ["תאריך", s.date],
+        ["איש קשר", s.contact],
+        ["טלפון", s.phone],
+        ["אימייל", s.email],
+        ["עיר", s.city],
+        ["מחוז", s.province],
+        ["תחומים", (s.fields || []).join(", ")],
+        ["דירוג", s.rating ? "★".repeat(s.rating) : ""],
+        ["תיאור", s.description],
+      ].filter(([, v]) => v);
+
+      for (const [label, value] of rows) {
+        addPageIfNeeded(8);
+
+        // לייבל מימין
+        doc.setTextColor(...provinceColor);
+        doc.text(rtl(`${label}:`), labelColX, y, { align: "right" });
+
+        // ערך משמאל
+        doc.setTextColor(30, 30, 30);
+        const printableValue = formatFieldValue(label, value);
+        const lines = doc.splitTextToSize(printableValue, valueColWidth);
+        doc.text(lines, valueColX, y, { align: "left" });
+
+        y += Math.max(6, lines.length * 5);
+      }
+
+      // תמונת כרטיס
+	  
+	  if (s.card_image_url) {
+	  const dataUrl = await fetchAsDataUrl(s.card_image_url);
+	  if (dataUrl) {
+		try {
+		  const dims = await getImageDimensions(dataUrl);
+		  const frameW = 50;
+		  const frameH = 33;
+		  const fitted = fitRect(dims.width, dims.height, frameW, frameH);
+
+		  addPageIfNeeded(frameH + 8);
+
+		  // רקע לבן + מסגרת עדינה
+		  doc.setFillColor(255, 255, 255);
+		  doc.setDrawColor(220, 220, 220);
+		  doc.roundedRect(margin, y, frameW, frameH, 1.5, 1.5, "FD");
+
+		  // מיקום ממורכז בתוך המסגרת
+		  const imgX = margin + (frameW - fitted.width) / 2;
+		  const imgY = y + (frameH - fitted.height) / 2;
+
+		  doc.addImage(
+			dataUrl,
+			"JPEG",
+			imgX,
+			imgY,
+			fitted.width,
+			fitted.height
+		  );
+
+		  y += frameH + 5;
+		} catch {}
+	  }
+	}
+	  
+	  
+	  
+	  
+
+      if (s.updated_at) {
+        addPageIfNeeded(8);
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+
+        const stamp = `Updated by ${s.updated_by || ""} · ${new Date(s.updated_at).toLocaleString("he-IL")}`;
+        doc.text(stamp, valueColX, y, { align: "left" });
+
+        y += 8;
+      }
+
+      if (prods.length > 0) {
+        addPageIfNeeded(10);
+        doc.setFontSize(11);
+        doc.setTextColor(...provinceColor);
+        doc.text(rtl(`מוצרים (${prods.length})`), labelColX, y, { align: "right" });
+        y += 8;
+      }
+
+      for (const p of prods) {
+        addPageIfNeeded(42);
+
+        doc.setDrawColor(230, 230, 230);
+        doc.roundedRect(margin + 2, y, contentWidth - 4, 0.1, 1.5, 1.5, "S");
+
+        doc.setFontSize(10);
+        doc.setTextColor(...provinceColor);
+        doc.text(rtl(`מוצר #${p.id}`), labelColX - 2, y + 5, { align: "right" });
+
+        y += 8;
+
+        doc.setTextColor(30, 30, 30);
+        const productDesc = isHebrewText(p.description || "") ? rtl(p.description || "ללא תיאור") : (p.description || "ללא תיאור");
+        const descLines = doc.splitTextToSize(productDesc, contentWidth - 8);
+        doc.text(descLines, valueColX, y, { align: "left" });
+        y += descLines.length * 5 + 2;
+
+        if (p.rating) {
+          doc.setTextColor(180, 120, 0);
+          doc.text(`Rating: ${"★".repeat(p.rating)}`, valueColX, y, { align: "left" });
+          y += 6;
+        }
+
+
+
+
+
+
+
+
+
+
+		
+		
+		const imgs = (p.images || []).slice(0, 4);
+		let x = margin;
+		let maxRowHeight = 0;
+
+		for (const img of imgs) {
+		  if (!img.url) continue;
+		  const dataUrl = await fetchAsDataUrl(img.url);
+		  if (!dataUrl) continue;
+
+		  try {
+			const dims = await getImageDimensions(dataUrl);
+
+			const frameW = 32;
+			const frameH = 24;
+			const fitted = fitRect(dims.width, dims.height, frameW, frameH);
+
+			// רקע לבן + מסגרת עדינה
+			doc.setFillColor(255, 255, 255);
+			doc.setDrawColor(225, 225, 225);
+			doc.roundedRect(x, y, frameW, frameH, 1, 1, "FD");
+
+			// מרכז את התמונה בתוך המסגרת
+			const imgX = x + (frameW - fitted.width) / 2;
+			const imgY = y + (frameH - fitted.height) / 2;
+
+			doc.addImage(
+			  dataUrl,
+			  "JPEG",
+			  imgX,
+			  imgY,
+			  fitted.width,
+			  fitted.height
+			);
+
+			x += 36;
+			maxRowHeight = Math.max(maxRowHeight, frameH);
+		  } catch {}
+		}
+
+		if (maxRowHeight > 0) {
+		  y += maxRowHeight + 4;
+		}
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+
+			if (p.updated_at) {
+			  doc.setFontSize(8);
+			  doc.setTextColor(120, 120, 120);
+			  const productStamp = `Updated by ${p.updated_by || ""} · ${new Date(p.updated_at).toLocaleString("he-IL")}`;
+			  doc.text(productStamp, valueColX, y, { align: "left" });
+			  y += 7;
+			}
+
+			y += 4;
+		  }
+
+		  y += 4;
+		}
+
+		addPageNumber(doc, pageWidth, pageHeight);
+
+		doc.save(`suppliers_${dtLabel()}.pdf`);
+		showMsg("✓ PDF הורד", true);
+	  } catch (e) {
+		showMsg("שגיאה PDF: " + e.message, false);
+	  }
+
+	  setExporting(false);
+	};  
+	  
+	  
+	  
+	  
+	  
+
+
+
+
+
+
+
+
+	  /* ── Import CSV ── */
+	  const importCSV=async file=>{
+		showMsg("מייבא...",true);
+		try{
+		  const text=await file.text();const lines=text.split("\n").filter(l=>l.trim());
+		  let start=0;for(let i=0;i<lines.length;i++){if(lines[i].includes("אינדקס")||lines[i].toLowerCase().includes("name")){start=i+1;break;}}
+		  let count=0;const now=nowISO();
+		  for(let i=start;i<lines.length;i++){
+			const cols=lines[i].match(/(".*?"|[^,]+)(?=,|$)/g)||[];
+			const c=cols.map(x=>x.replace(/^"|"$/g,"").trim());
+			if(c.length<2||!c[1])continue;
+			await sb.insert("suppliers",{name:c[1],source:c[2]||"",date:c[3]||todayStr(),contact:c[4]||"",phone:c[5]||"",email:c[6]||"",city:c[7]||"",province:c[8]||"",fields:(c[9]||"").split(",").map(s=>s.trim()).filter(Boolean),description:c[10]||"",rating:parseInt(c[11])||0,created_at:now,created_by:"import",updated_at:now,updated_by:"import"});
+			count++;
+		  }
+		  await loadSuppliers();showMsg(`יובאו ${count} ספקים ✓`,true);
+		}catch(e){showMsg("שגיאה: "+e.message,false);}
+	  };
+
+	  const allUsedProvinces=[...new Set(suppliers.map(s=>s.province).filter(Boolean))].sort();
+	  const allUsedFields=[...new Set(suppliers.flatMap(s=>s.fields||[]))].sort();
+	  const CS={background:"#fff",borderRadius:14,border:"1px solid rgba(0,0,0,0.1)",padding:"1.25rem",marginBottom:14};
+	  const BP={padding:"10px",borderRadius:9,border:"none",background:"#1d4ed8",cursor:"pointer",fontSize:14,fontWeight:500,color:"#fff"};
+
+	  if(!user)return<LoginScreen onLogin={handleLogin}/>;
   if(loading)return<div style={{padding:"2rem",textAlign:"center",color:"#888"}}>טוען נתונים...</div>;
 
   return(<div dir="rtl" style={{fontFamily:"var(--font-sans)",padding:"0.75rem",maxWidth:560,margin:"0 auto",background:"var(--color-background-tertiary)",minHeight:"100vh"}}>
@@ -938,7 +1267,7 @@ export default function App(){
         :<span style={{fontSize:18,fontWeight:700}}>ניהול ספקים</span>}
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <span style={{fontSize:12,color:"#666",background:"#f1f5f9",padding:"4px 10px",borderRadius:20}}>👤 {userName}</span>
-        {view==="list"&&<button onClick={()=>{setForm({...EMPTY_FORM,date:todayStr()});setSelSup(null);setErrors({});setView("form");}} style={{...BP,padding:"7px 14px",fontSize:13}}>+ ספק חדש</button>}
+        {view==="list"&&<button onClick={()=>{setForm({ ...EMPTY_FORM, date: todayStr() });setSelSup(null);setErrors({});setView("form");}} style={{...BP,padding:"7px 14px",fontSize:13}}>+ ספק חדש</button>}
         <button onClick={handleLogout} style={{fontSize:12,padding:"4px 10px",borderRadius:20,border:"1px solid rgba(0,0,0,0.15)",background:"#fff",cursor:"pointer",color:"#888"}}>יציאה</button>
       </div>
     </div>
@@ -951,39 +1280,103 @@ export default function App(){
       onClose={()=>setDupModal(null)}/>}
 
     {view==="list"&&<>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-        <Section title="ייצוא נתונים" icon="📤" accent="#0f766e">
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <ActBtn icon="📦" label="ZIP" bg="#f0fdf4" color="#065f46" onClick={downloadZip} disabled={exporting}/>
-            <ActBtn icon="📄" label="PDF" bg="#fff7ed" color="#c2410c" onClick={downloadPDF} disabled={exporting}/>
-          </div>
-          <div style={{fontSize:11,color:"#888",marginTop:8}}>ZIP: תיקיות מחוז/ספק · PDF: ספקים+תמונות</div>
-        </Section>
-        <Section title="ייבוא נתונים" icon="📥" accent="#7c3aed">
-          <div style={{display:"flex",gap:10}}>
-            <ActBtn icon="📊" label="ייבוא CSV" bg="#faf5ff" color="#5b21b6" onClick={()=>importSupRef.current.click()}/>
-          </div>
-        </Section>
-      </div>
+		<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+		  <Section title="ייצוא נתונים" icon="📤" accent="#0f766e">
+			<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+			  <ActBtn icon="📦" label="ZIP" bg="#f0fdf4" color="#065f46" onClick={downloadZip} disabled={exporting}/>
+			  <ActBtn icon="📄" label="PDF" bg="#fff7ed" color="#c2410c" onClick={downloadPDF} disabled={exporting}/>
+			</div>
+			<div style={{fontSize:11,color:"#888",marginTop:8}}>ZIP: תיקיות לפי מחוז/ספק · PDF: כל הספקים עם תמונות</div>
+		  </Section>
 
+		  <Section title="ייבוא נתונים" icon="📥" accent="#7c3aed">
+			<div style={{display:"flex",gap:10}}>
+			  <ActBtn icon="📊" label="ייבוא CSV" bg="#faf5ff" color="#5b21b6" onClick={()=>importSupRef.current.click()}/>
+			</div>
+		  </Section>
+		</div>
+		
+
+		
       <Section title="סינון" icon="🔎" accent="#2563eb">
-        <div style={{padding:0}}>
-          <input value={filterExhibition} onChange={e=>setFilterExhibition(e.target.value)} placeholder="סינון לפי תערוכה..."
-            style={{width:"100%",marginBottom:8,fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none",boxSizing:"border-box"}}/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="שם ספק"
-            style={{width:"100%",marginBottom:8,fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none",boxSizing:"border-box"}}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <select value={filterProvince} onChange={e=>setFilterProvince(e.target.value)} style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}>
-              <option value="">כל המחוזות</option>{allUsedProvinces.map(p=><option key={p} value={p}>{p}</option>)}
-            </select>
-            <select value={filterField} onChange={e=>setFilterField(e.target.value)} style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}>
-              <option value="">כל תחומי העיסוק</option>{(allUsedFields.length?allUsedFields:FIELDS_OF_WORK).map(f=><option key={f} value={f}>{f}</option>)}
-            </select>
-          </div>
-          {(search||filterProvince||filterField||filterExhibition)&&
-            <button onClick={()=>{setSearch("");setFilterProvince("");setFilterField("");setFilterExhibition("");}} style={{marginTop:8,fontSize:12,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>✕ נקה סינון</button>}
-        </div>
-      </Section>
+		<div style={{padding:"0"}}>
+	  
+  		<input
+		  value={filterExhibition}
+		  onChange={e=>setFilterExhibition(e.target.value)}
+		  placeholder="סינון לפי תערוכה..."
+		  style={{
+			width:"100%",
+			marginBottom: 8,
+			fontSize:13,
+			padding:"7px 8px",
+			borderRadius:8,
+			border:"1.5px solid rgba(0,0,0,0.14)",
+			background:"#f8f7f5",
+			color:"#333",
+			outline:"none",
+			boxSizing:"border-box"
+		  }}
+		/>		
+
+		<input
+		  value={search}
+		  onChange={e => setSearch(e.target.value)}
+		  placeholder="שם ספק"
+		  style={{
+			width: "100%",
+			marginBottom: 8,
+			fontSize: 13,
+			padding: "7px 8px",
+			borderRadius: 8,
+			border: "1.5px solid rgba(0,0,0,0.14)",
+			background: "#f8f7f5",
+			color: "#333",
+			outline: "none",
+			boxSizing: "border-box"
+		  }}
+		/>
+
+        
+		<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+		  <select
+			value={filterProvince}
+			onChange={e=>setFilterProvince(e.target.value)}
+			style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}
+		  >
+			<option value="">כל המחוזות</option>
+			{allUsedProvinces.map(p=><option key={p} value={p}>{p}</option>)}
+		  </select>
+
+		  <select
+			value={filterField}
+			onChange={e=>setFilterField(e.target.value)}
+			style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}
+		  >
+			<option value="">כל תחומי העיסוק</option>
+			{(allUsedFields.length?allUsedFields:FIELDS_OF_WORK).map(f=><option key={f} value={f}>{f}</option>)}
+		  </select>
+		</div>
+
+		
+        {(search || filterProvince || filterField || filterExhibition) &&
+		  <button
+			onClick={()=>{
+			  setSearch("");
+			  setFilterProvince("");
+			  setFilterField("");
+			  setFilterExhibition("");
+			}}
+			style={{marginTop:8,fontSize:12,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}
+		  >
+			✕ נקה סינון
+		  </button>
+		}
+
+
+      </div>
+	
+	</Section>
 
       <div style={{fontSize:12,color:"#888",marginBottom:8}}>{filtered.length} ספקים</div>
       {filtered.length===0&&<div style={{textAlign:"center",color:"#888",padding:"2.5rem",background:"#fff",borderRadius:14}}>לא נמצאו ספקים</div>}
@@ -1014,8 +1407,7 @@ export default function App(){
           <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap",padding:"12px",background:"#f8f7f5",borderRadius:10,border:"1.5px dashed rgba(0,0,0,0.15)"}}>
             {(form._cardPreview||form.cardImageUrl)&&(
               <div style={{position:"relative",flexShrink:0}}>
-                <img src={form._cardPreview?`data:image/jpeg;base64,${form._cardPreview}`:form.cardImageUrl}
-                  style={{width:120,height:80,objectFit:"cover",borderRadius:8,border:"1px solid rgba(0,0,0,0.1)",display:"block"}}/>
+                <img src={form._cardPreview?`data:image/jpeg;base64,${form._cardPreview}`:form.cardImageUrl} style={{width:120,height:80,objectFit:"cover",borderRadius:8,border:"1px solid rgba(0,0,0,0.1)",display:"block"}}/>
                 {form._cardPreview&&<button onClick={()=>setEditImgCtx({target:"card"})} style={{position:"absolute",bottom:3,right:3,background:"rgba(0,0,0,0.65)",border:"none",borderRadius:5,color:"#fff",fontSize:10,padding:"2px 5px",cursor:"pointer"}}>✏</button>}
               </div>
             )}
@@ -1026,6 +1418,7 @@ export default function App(){
             </div>
           </div>
         </div>
+        
         <Field label="תאריך"><input type="date" style={IS} value={form.date} onChange={e=>sf("date",e.target.value)}/></Field>
         <Field label="שם ספק *" error={errors.name}><input style={IS} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="שם החברה"/></Field>
         <Field label="שם איש קשר"><input style={IS} value={form.contact} onChange={e=>sf("contact",e.target.value)} placeholder="שם מלא"/></Field>
@@ -1059,10 +1452,28 @@ export default function App(){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {products.map(p=>{const fi=(p.images||[])[0];return(
             <div key={p.id} style={{border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,overflow:"hidden",background:"#fafaf9"}}>
-              {fi?.url
-                ?<div style={{width:"100%",aspectRatio:"1/1",display:"flex",alignItems:"center",justifyContent:"center",background:"#fff"}}>
-                  <img src={fi.url} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",display:"block"}}/>
-                </div>
+              {fi?.url?
+			  
+			<div style={{
+			  width:"100%",
+			  aspectRatio:"1/1",
+			  display:"flex",
+			  alignItems:"center",
+			  justifyContent:"center",
+			  background:"#fff"
+			}}>
+			  <img
+				src={fi.url}
+				style={{
+				  maxWidth:"100%",
+				  maxHeight:"100%",
+				  objectFit:"contain",
+				  display:"block"
+				}}
+			  />
+			</div>
+				
+				
                 :<div style={{height:70,background:"#f0eeec",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#bbb"}}>אין תמונה</div>}
               <div style={{padding:"10px"}}>
                 <div style={{fontSize:11,color:"#aaa",marginBottom:2}}>#{p.id} · {p.images?.length||0} תמונות</div>
