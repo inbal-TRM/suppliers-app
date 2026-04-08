@@ -473,31 +473,57 @@ function ActBtn({icon,label,onClick,color,bg,disabled}){
   </button>);
 }
 
-function LoginScreen({onLogin}){
-  const [name,setName]=useState("");const [key,setKey]=useState("");const [showKey,setShowKey]=useState(false);
-  const valid=name.trim()&&key.trim().length>10;
+function LoginScreen({ onLogin }) {
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  const [exhibition, setExhibition] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const valid = name.trim() && key.trim().length > 10 && exhibition.trim();
   return(<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f1f5f9",fontFamily:"sans-serif"}}>
     <div style={{background:"#fff",borderRadius:18,border:"1px solid rgba(0,0,0,0.1)",padding:"2rem",width:320,direction:"rtl"}}>
       <div style={{textAlign:"center",marginBottom:20}}><div style={{fontSize:36,marginBottom:6}}>🏭</div><div style={{fontSize:20,fontWeight:700,marginBottom:4}}>ניהול ספקים</div></div>
-      <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>שם משתמש</label>
+      
+	  <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>שם משתמש</label>
       <input value={name} onChange={e=>setName(e.target.value)} placeholder="השם שלך..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",fontSize:14,borderRadius:9,border:"1.5px solid rgba(0,0,0,0.18)",outline:"none",marginBottom:14,textAlign:"right"}}/>
-      <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>Gemini API Key <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2563eb",marginRight:6,fontWeight:400}}>קבל key חינמי ←</a></label>
+      
+	  <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>
+		  תערוכה
+		</label>
+		<input
+		  value={exhibition}
+		  onChange={e => setExhibition(e.target.value)}
+		  placeholder="שם התערוכה..."
+		  style={{
+			width:"100%",
+			boxSizing:"border-box",
+			padding:"9px 12px",
+			fontSize:14,
+			borderRadius:9,
+			border:"1.5px solid rgba(0,0,0,0.18)",
+			outline:"none",
+			marginBottom:14,
+			textAlign:"right"
+		  }}
+		/>
+	  
+	  <label style={{fontSize:12,fontWeight:500,color:"#666",display:"block",marginBottom:5}}>Gemini API Key <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{fontSize:11,color:"#2563eb",marginRight:6,fontWeight:400}}>קבל key חינמי ←</a></label>
       <div style={{position:"relative",marginBottom:16}}>
         <input value={key} onChange={e=>setKey(e.target.value)} type={showKey?"text":"password"} placeholder="AIza..." style={{width:"100%",boxSizing:"border-box",padding:"9px 12px",paddingLeft:36,fontSize:13,borderRadius:9,border:"1.5px solid rgba(0,0,0,0.18)",outline:"none",textAlign:"left",direction:"ltr"}}/>
         <button onClick={()=>setShowKey(v=>!v)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#888"}}>{showKey?"🙈":"👁"}</button>
       </div>
       <div style={{fontSize:11,color:"#aaa",marginBottom:16}}>ה-key נשמר רק במכשיר שלך</div>
-      <button onClick={()=>valid&&onLogin(name.trim(),key.trim())} disabled={!valid} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:valid?"#1d4ed8":"#93c5fd",cursor:valid?"pointer":"default",fontSize:15,fontWeight:600,color:"#fff"}}>כניסה</button>
+      <button onClick={() => valid && onLogin(name.trim(), key.trim(), exhibition.trim())} disabled={!valid} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:valid?"#1d4ed8":"#93c5fd",cursor:valid?"pointer":"default",fontSize:15,fontWeight:600,color:"#fff"}}>כניסה</button>
     </div>
   </div>);
 }
 
 /* ══════════════ MAIN APP ══════════════ */
-const EMPTY_FORM={name:"",contact:"",phone:"",email:"",city:"",province:"",fields:[],description:"",rating:0,cardImageUrl:"",_cardPreview:null,_cardPreviewType:null,source:"",date:todayStr()};
+const EMPTY_FORM={name:"",contact:"",phone:"",email:"",city:"",province:"",fields:[],description:"",rating:0,cardImageUrl:"",_cardPreview:null,_cardPreviewType:null,date:todayStr()};
 const EMPTY_PROD={description:"",images:[],rating:0};
 
 export default function App(){
   const [user,setUser]=useState(null);
+  
   const [view,setView]=useState("list");
   const [suppliers,setSuppliers]=useState([]);
   const [selSup,setSelSup]=useState(null);
@@ -514,7 +540,7 @@ export default function App(){
   const [filterField,setFilterField]=useState("");
   const [errors,setErrors]=useState({});
   const [editImgCtx,setEditImgCtx]=useState(null);
-  const [defaultSource,setDefaultSource]=useState("");
+  //const [defaultSource,setDefaultSource]=useState("");
   const [msg,setMsg]=useState("");
   const [msgOk,setMsgOk]=useState(true);
   const [exporting,setExporting]=useState(false);
@@ -533,16 +559,21 @@ export default function App(){
   useEffect(()=>{
     const saved=localStorage.getItem("supplier_user");
     if(saved)try{setUser(JSON.parse(saved));}catch(_){}
-    sb.getMeta("defaultSource_"+todayStr()).then(v=>{if(v)setDefaultSource(v);}).catch(()=>{});
+    //sb.getMeta("defaultSource_"+todayStr()).then(v=>{if(v)setDefaultSource(v);}).catch(()=>{});
     loadSuppliers();
   },[loadSuppliers]);
 
-  function handleLogin(name,key){const u={name,key};setUser(u);localStorage.setItem("supplier_user",JSON.stringify(u));}
+  function handleLogin(name, key, exhibition) {
+	  const u = { name, key, exhibition };
+	  setUser(u);
+	  localStorage.setItem("supplier_user", JSON.stringify(u));
+	}
+
   function handleLogout(){setUser(null);localStorage.removeItem("supplier_user");}
 
   const loadProducts=async sid=>{if(!sid)return;const d=await sb.select("products",`supplier_id=eq.${sid}&select=*`);setProducts(d||[]);};
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const saveDefaultSource=async val=>{setDefaultSource(val);await sb.upsertMeta("defaultSource_"+todayStr(),val).catch(()=>{});};
+  //const saveDefaultSource=async val=>{setDefaultSource(val);await sb.upsertMeta("defaultSource_"+todayStr(),val).catch(()=>{});};
 
   /* ── Upload helper ── */
   async function uploadImg(b64,type,path){
@@ -626,13 +657,34 @@ export default function App(){
   const doSave=async(forceNew=false)=>{
     setSaving(true);const now=nowISO();
     try{
-      if(form.source)await saveDefaultSource(form.source);
+      //if(form.source)await saveDefaultSource(form.source);
       let cardUrl=form.cardImageUrl||"";
       if(form._cardPreview){
         const path=`cards/${selSup?.id||"new"}_${Date.now()}.jpg`;
         cardUrl=await uploadImg(form._cardPreview,form._cardPreviewType||"image/jpeg",path);
       }
-      const payload={name:form.name,contact:form.contact,phone:form.phone,email:form.email,city:form.city,province:form.province,fields:form.fields,description:form.description,rating:form.rating,source:form.source,date:form.date||todayStr(),card_image_url:cardUrl,updated_at:now,updated_by:userName};
+	  
+	  
+      //const payload={name:form.name,contact:form.contact,phone:form.phone,email:form.email,city:form.city,province:form.province,fields:form.fields,description:form.description,rating:form.rating,source:form.source,date:form.date||todayStr(),card_image_url:cardUrl,updated_at:now,updated_by:userName};
+	  const payload = {
+		  name: form.name,
+		  contact: form.contact,
+		  phone: form.phone,
+		  email: form.email,
+		  city: form.city,
+		  province: form.province,
+		  fields: form.fields,
+		  description: form.description,
+		  rating: form.rating,
+		  source: user?.exhibition || "",
+		  date: form.date || todayStr(),
+		  card_image_url: cardUrl,
+		  updated_at: now,
+		  updated_by: userName
+		};
+	  
+	  
+	  
       if(selSup&&!forceNew){
         await sb.update("suppliers",selSup.id,payload);
         setSelSup(s=>({...s,...payload,id:selSup.id}));
@@ -659,7 +711,7 @@ export default function App(){
 
   const openEdit=async s=>{
     setSelSup(s);
-    setForm({name:s.name||"",contact:s.contact||"",phone:s.phone||"",email:s.email||"",city:s.city||"",province:s.province||"",fields:s.fields||[],description:s.description||"",rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,source:s.source||"",date:s.date||todayStr()});
+    setForm({name:s.name||"",contact:s.contact||"",phone:s.phone||"",email:s.email||"",city:s.city||"",province:s.province||"",fields:s.fields||[],description:s.description||"",rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,date:s.date||todayStr()});
     setErrors({});await loadProducts(s.id);setView("form");
   };
 
@@ -1092,7 +1144,7 @@ const downloadPDF = async () => {
         :<span style={{fontSize:18,fontWeight:700}}>ניהול ספקים</span>}
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <span style={{fontSize:12,color:"#666",background:"#f1f5f9",padding:"4px 10px",borderRadius:20}}>👤 {userName}</span>
-        {view==="list"&&<button onClick={()=>{setForm({...EMPTY_FORM,source:defaultSource,date:todayStr()});setSelSup(null);setErrors({});setView("form");}} style={{...BP,padding:"7px 14px",fontSize:13}}>+ ספק חדש</button>}
+        {view==="list"&&<button onClick={()=>{setForm({ ...EMPTY_FORM, date: todayStr() });setSelSup(null);setErrors({});setView("form");}} style={{...BP,padding:"7px 14px",fontSize:13}}>+ ספק חדש</button>}
         <button onClick={handleLogout} style={{fontSize:12,padding:"4px 10px",borderRadius:20,border:"1px solid rgba(0,0,0,0.15)",background:"#fff",cursor:"pointer",color:"#888"}}>יציאה</button>
       </div>
     </div>
@@ -1171,7 +1223,7 @@ const downloadPDF = async () => {
             </div>
           </div>
         </div>
-        <Field label="מקור ספק"><input style={IS} value={form.source} onChange={e=>sf("source",e.target.value)} onBlur={e=>{if(e.target.value)saveDefaultSource(e.target.value);}} placeholder="מאיפה הגיע הספק?"/></Field>
+        
         <Field label="תאריך"><input type="date" style={IS} value={form.date} onChange={e=>sf("date",e.target.value)}/></Field>
         <Field label="שם ספק *" error={errors.name}><input style={IS} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="שם החברה"/></Field>
         <Field label="שם איש קשר"><input style={IS} value={form.contact} onChange={e=>sf("contact",e.target.value)} placeholder="שם מלא"/></Field>
