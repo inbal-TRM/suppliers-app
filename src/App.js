@@ -538,6 +538,7 @@ export default function App(){
   const [search,setSearch]=useState("");
   const [filterProvince,setFilterProvince]=useState("");
   const [filterField,setFilterField]=useState("");
+  const [filterExhibition,setFilterExhibition]=useState("");
   const [errors,setErrors]=useState({});
   const [editImgCtx,setEditImgCtx]=useState(null);
   //const [defaultSource,setDefaultSource]=useState("");
@@ -747,13 +748,20 @@ export default function App(){
     return pc!==0?pc:(a.name||"").localeCompare(b.name||"");
   });
 
-  const filtered=sorted.filter(s=>{
-    const q=search.toLowerCase();
-    return(!q||s.name?.toLowerCase().includes(q)||s.contact?.toLowerCase().includes(q))&&
-      (!filterProvince||s.province===filterProvince)&&
-      (!filterField||(s.fields||[]).includes(filterField));
-  });
+  const filtered = sorted.filter(s => {
+	  const q = search.toLowerCase();
+	  const exhibitionQ = filterExhibition.toLowerCase();
 
+	  return (
+		(!q ||
+		  s.name?.toLowerCase().includes(q) ||
+		  s.contact?.toLowerCase().includes(q)) &&
+		(!filterProvince || s.province === filterProvince) &&
+		(!filterField || (s.fields || []).includes(filterField)) &&
+		(!exhibitionQ || (s.source || "").toLowerCase().includes(exhibitionQ))
+	  );
+	});
+	
   /* ── CSV ── */
   function buildCSV(allS,allP){
     let c="\uFEFFאינדקס,שם ספק,מקור,תאריך,איש קשר,טלפון,אימייל,עיר,מחוז,תחום עיסוק,תיאור,דירוג,נוצר,נוצר ע\"י,עודכן,עודכן ע\"י\n";
@@ -1157,31 +1165,103 @@ const downloadPDF = async () => {
       onClose={()=>setDupModal(null)}/>}
 
     {view==="list"&&<>
-      <Section title="ייצוא נתונים" icon="📤" accent="#0f766e">
-        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-          <ActBtn icon="📦" label="ZIP" bg="#f0fdf4" color="#065f46" onClick={downloadZip} disabled={exporting}/>
-          <ActBtn icon="📄" label="PDF" bg="#fff7ed" color="#c2410c" onClick={downloadPDF} disabled={exporting}/>
-        </div>
-        <div style={{fontSize:11,color:"#888",marginTop:8}}>ZIP: תיקיות לפי מחוז/ספק · PDF: כל הספקים עם תמונות</div>
-      </Section>
-      <Section title="ייבוא נתונים" icon="📥" accent="#7c3aed">
-        <div style={{display:"flex",gap:10}}>
-          <ActBtn icon="📊" label="ייבוא CSV" bg="#faf5ff" color="#5b21b6" onClick={()=>importSupRef.current.click()}/>
-        </div>
-      </Section>
+		<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+		  <Section title="ייצוא נתונים" icon="📤" accent="#0f766e">
+			<div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+			  <ActBtn icon="📦" label="ZIP" bg="#f0fdf4" color="#065f46" onClick={downloadZip} disabled={exporting}/>
+			  <ActBtn icon="📄" label="PDF" bg="#fff7ed" color="#c2410c" onClick={downloadPDF} disabled={exporting}/>
+			</div>
+			<div style={{fontSize:11,color:"#888",marginTop:8}}>ZIP: תיקיות לפי מחוז/ספק · PDF: כל הספקים עם תמונות</div>
+		  </Section>
 
-      <div style={{...CS,padding:"12px 14px",marginBottom:12}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="חיפוש לפי שם..." style={{width:"100%",border:"none",outline:"none",fontSize:14,background:"transparent",marginBottom:10,display:"block"}}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <select value={filterProvince} onChange={e=>setFilterProvince(e.target.value)} style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}>
-            <option value="">כל המחוזות</option>{allUsedProvinces.map(p=><option key={p} value={p}>{p}</option>)}
-          </select>
-          <select value={filterField} onChange={e=>setFilterField(e.target.value)} style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}>
-            <option value="">כל תחומי העיסוק</option>{(allUsedFields.length?allUsedFields:FIELDS_OF_WORK).map(f=><option key={f} value={f}>{f}</option>)}
-          </select>
-        </div>
-        {(search||filterProvince||filterField)&&<button onClick={()=>{setSearch("");setFilterProvince("");setFilterField("");}} style={{marginTop:8,fontSize:12,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>✕ נקה סינון</button>}
+		  <Section title="ייבוא נתונים" icon="📥" accent="#7c3aed">
+			<div style={{display:"flex",gap:10}}>
+			  <ActBtn icon="📊" label="ייבוא CSV" bg="#faf5ff" color="#5b21b6" onClick={()=>importSupRef.current.click()}/>
+			</div>
+		  </Section>
+		</div>
+		
+
+		
+      <Section title="סינון" icon="🔎" accent="#2563eb">
+		<div style={{padding:"0"}}>
+	  
+  		<input
+		  value={filterExhibition}
+		  onChange={e=>setFilterExhibition(e.target.value)}
+		  placeholder="סינון לפי תערוכה..."
+		  style={{
+			width:"100%",
+			marginBottom: 8,
+			fontSize:13,
+			padding:"7px 8px",
+			borderRadius:8,
+			border:"1.5px solid rgba(0,0,0,0.14)",
+			background:"#f8f7f5",
+			color:"#333",
+			outline:"none",
+			boxSizing:"border-box"
+		  }}
+		/>		
+
+		<input
+		  value={search}
+		  onChange={e => setSearch(e.target.value)}
+		  placeholder="שם ספק"
+		  style={{
+			width: "100%",
+			marginBottom: 8,
+			fontSize: 13,
+			padding: "7px 8px",
+			borderRadius: 8,
+			border: "1.5px solid rgba(0,0,0,0.14)",
+			background: "#f8f7f5",
+			color: "#333",
+			outline: "none",
+			boxSizing: "border-box"
+		  }}
+		/>
+
+        
+		<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+		  <select
+			value={filterProvince}
+			onChange={e=>setFilterProvince(e.target.value)}
+			style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}
+		  >
+			<option value="">כל המחוזות</option>
+			{allUsedProvinces.map(p=><option key={p} value={p}>{p}</option>)}
+		  </select>
+
+		  <select
+			value={filterField}
+			onChange={e=>setFilterField(e.target.value)}
+			style={{fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}
+		  >
+			<option value="">כל תחומי העיסוק</option>
+			{(allUsedFields.length?allUsedFields:FIELDS_OF_WORK).map(f=><option key={f} value={f}>{f}</option>)}
+		  </select>
+		</div>
+
+		
+        {(search || filterProvince || filterField || filterExhibition) &&
+		  <button
+			onClick={()=>{
+			  setSearch("");
+			  setFilterProvince("");
+			  setFilterField("");
+			  setFilterExhibition("");
+			}}
+			style={{marginTop:8,fontSize:12,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}
+		  >
+			✕ נקה סינון
+		  </button>
+		}
+
+
       </div>
+	
+	</Section>
 
       <div style={{fontSize:12,color:"#888",marginBottom:8}}>{filtered.length} ספקים</div>
       {filtered.length===0&&<div style={{textAlign:"center",color:"#888",padding:"2.5rem",background:"#fff",borderRadius:14}}>לא נמצאו ספקים</div>}
