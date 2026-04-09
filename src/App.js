@@ -164,22 +164,90 @@ function compressImage(b64,srcType,quality=0.72){
 }
 
 /* ── Gemini ── */
-async function callGemini(prompt,b64,mt,apiKey){
-  const preferred=["gemini-2.5-flash","gemini-flash-latest","gemini-2.0-flash-lite","gemini-2.0-flash"];
-  const listRes=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-  const listData=await listRes.json();
-  if(listData.error)throw new Error(listData.error.message);
-  const available=(listData.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")).map(m=>m.name.replace("models/",""));
-  const model=preferred.find(p=>available.includes(p))||available.find(m=>m.includes("flash"))||available[0];
-  if(!model)throw new Error("לא נמצאו מודלים");
-  const parts=[];
-  if(b64)parts.push({inline_data:{mime_type:mt||"image/jpeg",data:b64}});
-  parts.push({text:prompt});
-  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts}]})});
-  const d=await res.json();
-  if(d.error)throw new Error(d.error.message);
-  return d.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("\n")||"";
+async function callGemini(prompt, b64, mt, apiKey) {
+  const preferred = [
+    "gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.0-flash-lite",
+    "gemini-2.0-flash"
+  ];
+
+  const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+  const listData = await listRes.json();
+  if (listData.error) throw new Error(listData.error.message);
+
+  const available = (listData.models || [])
+    .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map(m => m.name.replace("models/", ""));
+
+  const orderedModels = [
+    ...preferred.filter(p => available.includes(p)),
+    ...available.filter(m => !preferred.includes(m) && m.includes("flash")),
+    ...available.filter(m => !preferred.includes(m) && !m.includes("flash"))
+  ];
+
+  if (!orderedModels.length) throw new Error("לא נמצאו מודלים");
+
+  const parts = [];
+  if (b64) parts.push({ inline_data: { mime_type: mt || "image/jpeg", data: b64 } });
+  parts.push({ text: prompt });
+
+  let lastError = null;
+
+  for (const model of orderedModels) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts }] })
+        }
+      );
+
+      const d = await res.json();
+
+      if (d.error) {
+        const msg = d.error.message || "";
+
+        // אם יש עומס - ננסה מודל הבא
+        if (
+          msg.includes("high demand") ||
+          msg.includes("overloaded") ||
+          msg.includes("try again later") ||
+          msg.includes("unavailable")
+        ) {
+          lastError = new Error(`${model}: ${msg}`);
+          continue;
+        }
+
+        throw new Error(msg);
+      }
+
+      return d.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("\n") || "";
+    } catch (err) {
+      const msg = String(err?.message || err);
+
+      if (
+        msg.includes("high demand") ||
+        msg.includes("overloaded") ||
+        msg.includes("try again later") ||
+        msg.includes("unavailable")
+      ) {
+        lastError = err;
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw lastError || new Error("כל מודלי Gemini נכשלו זמנית");
 }
+
+
+
+
 
 /* ── Load libs ── */
 function loadJSZip(){return new Promise((res,rej)=>{if(window.JSZip){res(window.JSZip);return;}const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";s.onload=()=>res(window.JSZip);s.onerror=rej;document.head.appendChild(s);});}
