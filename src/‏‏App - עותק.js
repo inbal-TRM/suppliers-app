@@ -30,10 +30,10 @@ const sb = {
 };
 
 /* ── Constants ── */
-const CPM={"Langfang":"Hebei","Bazhou":"Hebei","Anji":"Zhejiang","Foshan":"Guangdong","Huizhou":"Guangdong","Shenzhen":"Guangdong","Luoyang":"Henan","Shuyang":"Jiangsu","Suzhou":"Jiangsu","Qingdao":"Shandong","Dezhou":"Shandong","Tianjin":"Tianjin","Fuding":"Fujian","Zhangzhou":"Fujian","Fuzhou":"Fujian","Ganzhou":"Jiangxi","Chongqing":"Chongqing"};
+const CPM={"Langfang":"Hebei","Bazhou":"Hebei","Anji":"Zhejiang","Foshan":"Guangdong","Dongguan":"Guangdong","Huizhou":"Guangdong","Shenzhen":"Guangdong","Luoyang":"Henan","Shuyang":"Jiangsu","Suzhou":"Jiangsu","Qingdao":"Shandong","Dezhou":"Shandong","Tianjin":"Tianjin","Fuding":"Fujian","Zhangzhou":"Fujian","Fuzhou":"Fujian","Ganzhou":"Jiangxi","Chongqing":"Chongqing"};
 const CITIES=Object.keys(CPM);
 const PROVINCES=["Hebei","Zhejiang","Guangdong","Shandong","Henan","Jiangsu","Jiangxi","Fujian","Tianjin","Sichuan","אחר"];
-const FIELDS_OF_WORK=["פלסטיק","עץ","ברזל","מרופדים","אחר"];
+const FIELDS_OF_WORK=["פלסטיק","עץ","ברזל","שולחנות","ריהוט ביתי","מרופדים","אחר"];
 
 /* ── Helpers ── */
 function getProvince(city){if(!city)return"";const k=CITIES.find(c=>c.toLowerCase()===city.trim().toLowerCase());return k?CPM[k]:"";}
@@ -164,22 +164,90 @@ function compressImage(b64,srcType,quality=0.72){
 }
 
 /* ── Gemini ── */
-async function callGemini(prompt,b64,mt,apiKey){
-  const preferred=["gemini-2.5-flash","gemini-flash-latest","gemini-2.0-flash-lite","gemini-2.0-flash"];
-  const listRes=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-  const listData=await listRes.json();
-  if(listData.error)throw new Error(listData.error.message);
-  const available=(listData.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent")).map(m=>m.name.replace("models/",""));
-  const model=preferred.find(p=>available.includes(p))||available.find(m=>m.includes("flash"))||available[0];
-  if(!model)throw new Error("לא נמצאו מודלים");
-  const parts=[];
-  if(b64)parts.push({inline_data:{mime_type:mt||"image/jpeg",data:b64}});
-  parts.push({text:prompt});
-  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts}]})});
-  const d=await res.json();
-  if(d.error)throw new Error(d.error.message);
-  return d.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("\n")||"";
+async function callGemini(prompt, b64, mt, apiKey) {
+  const preferred = [
+    "gemini-2.0-flash-lite",
+	"gemini-2.5-flash",
+    "gemini-flash-latest",
+    "gemini-2.0-flash"
+  ];
+
+  const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+  const listData = await listRes.json();
+  if (listData.error) throw new Error(listData.error.message);
+
+  const available = (listData.models || [])
+    .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map(m => m.name.replace("models/", ""));
+
+  const orderedModels = [
+    ...preferred.filter(p => available.includes(p)),
+    ...available.filter(m => !preferred.includes(m) && m.includes("flash")),
+    ...available.filter(m => !preferred.includes(m) && !m.includes("flash"))
+  ];
+
+  if (!orderedModels.length) throw new Error("לא נמצאו מודלים");
+
+  const parts = [];
+  if (b64) parts.push({ inline_data: { mime_type: mt || "image/jpeg", data: b64 } });
+  parts.push({ text: prompt });
+
+  let lastError = null;
+
+  for (const model of orderedModels) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts }] })
+        }
+      );
+
+      const d = await res.json();
+
+      if (d.error) {
+        const msg = d.error.message || "";
+
+        // אם יש עומס - ננסה מודל הבא
+        if (
+          msg.includes("high demand") ||
+          msg.includes("overloaded") ||
+          msg.includes("try again later") ||
+          msg.includes("unavailable")
+        ) {
+          lastError = new Error(`${model}: ${msg}`);
+          continue;
+        }
+
+        throw new Error(msg);
+      }
+
+      return d.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("\n") || "";
+    } catch (err) {
+      const msg = String(err?.message || err);
+
+      if (
+        msg.includes("high demand") ||
+        msg.includes("overloaded") ||
+        msg.includes("try again later") ||
+        msg.includes("unavailable")
+      ) {
+        lastError = err;
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw lastError || new Error("כל מודלי Gemini נכשלו זמנית");
 }
+
+
+
+
 
 /* ── Load libs ── */
 function loadJSZip(){return new Promise((res,rej)=>{if(window.JSZip){res(window.JSZip);return;}const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";s.onload=()=>res(window.JSZip);s.onerror=rej;document.head.appendChild(s);});}
@@ -413,7 +481,7 @@ function LoginScreen({onLogin}){
 }
 
 /* ══════════════ MAIN APP ══════════════ */
-const EMPTY_FORM={name:"",contact:"",phone:"",email:"",city:"",province:"",fields:[],description:"",rating:0,cardImageUrl:"",_cardPreview:null,_cardPreviewType:null,source:"",date:todayStr()};
+const EMPTY_FORM={name:"",contact:"",phone:"",email:"",city:"",province:"",fields:[],description:"",rating:0,cardImageUrl:"",_cardPreview:null,_cardPreviewType:null,date:todayStr()};
 const EMPTY_PROD={description:"",images:[],rating:0};
 
 export default function App(){
@@ -504,7 +572,7 @@ export default function App(){
       }
       const payload={name:form.name,contact:form.contact,phone:form.phone,email:form.email,
         city:form.city,province:form.province,fields:form.fields,description:form.description,
-        rating:form.rating,        source:form.source||user?.exhibition||"",date:form.date||todayStr(),
+        rating:form.rating,source:user?.exhibition||"",date:form.date||todayStr(),
         card_image_url:cardUrl,updated_at:now,updated_by:userName};
       if(selSup&&!forceNew){
         await sb.update("suppliers",selSup.id,payload);
@@ -531,8 +599,7 @@ export default function App(){
     setSelSup(s);
     setForm({name:s.name||"",contact:s.contact||"",phone:s.phone||"",email:s.email||"",
       city:s.city||"",province:s.province||"",fields:s.fields||[],description:s.description||"",
-      rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,
-      source:s.source||"",date:s.date||todayStr()});
+      rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,date:s.date||todayStr()});
     setErrors({});await loadProducts(s.id);setView("form");
   };
 
@@ -800,7 +867,9 @@ export default function App(){
             doc.setTextColor(30,30,30);doc.setFontSize(9);
             const desc=isHebrewText(p.description||"")?rtl(p.description||"ללא תיאור"):(p.description||"ללא תיאור");
             const descLines=doc.splitTextToSize(desc,innerW);
-            doc.text(descLines,xBase+3,iy,{align:"left"});
+			iy += 1;
+
+			doc.text(descLines, xBase + cardW - 2, iy, { align: "right" });
             iy+=descLines.length*4+2;
 
             // images
@@ -937,7 +1006,7 @@ export default function App(){
         :<span style={{fontSize:18,fontWeight:700}}>ניהול ספקים</span>}
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <span style={{fontSize:12,color:"#666",background:"#f1f5f9",padding:"4px 10px",borderRadius:20}}>👤 {userName}</span>
-        {view==="list"&&<button onClick={()=>{    setForm({...EMPTY_FORM,source:user?.exhibition||"",date:todayStr()});setSelSup(null);setErrors({});setView("form");}} style={{...BP,padding:"7px 14px",fontSize:13}}>+ ספק חדש</button>}
+        {view==="list"&&<button onClick={()=>{setForm({...EMPTY_FORM,date:todayStr()});setSelSup(null);setErrors({});setView("form");}} style={{...BP,padding:"7px 14px",fontSize:13}}>+ ספק חדש</button>}
         <button onClick={handleLogout} style={{fontSize:12,padding:"4px 10px",borderRadius:20,border:"1px solid rgba(0,0,0,0.15)",background:"#fff",cursor:"pointer",color:"#888"}}>יציאה</button>
       </div>
     </div>
@@ -1026,7 +1095,6 @@ export default function App(){
           </div>
         </div>
         <Field label="תאריך"><input type="date" style={IS} value={form.date} onChange={e=>sf("date",e.target.value)}/></Field>
-        <Field label="מקור / תערוכה"><input style={IS} value={form.source||""} onChange={e=>sf("source",e.target.value)} placeholder="שם התערוכה או המקור"/></Field>
         <Field label="שם ספק *" error={errors.name}><input style={IS} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="שם החברה"/></Field>
         <Field label="שם איש קשר"><input style={IS} value={form.contact} onChange={e=>sf("contact",e.target.value)} placeholder="שם מלא"/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
