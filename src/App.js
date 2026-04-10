@@ -33,7 +33,7 @@ const sb = {
 const CPM={"Langfang":"Hebei","Bazhou":"Hebei","Anji":"Zhejiang","Foshan":"Guangdong","Huizhou":"Guangdong","Shenzhen":"Guangdong","Luoyang":"Henan","Shuyang":"Jiangsu","Suzhou":"Jiangsu","Qingdao":"Shandong","Dezhou":"Shandong","Tianjin":"Tianjin","Fuding":"Fujian","Zhangzhou":"Fujian","Fuzhou":"Fujian","Ganzhou":"Jiangxi","Chongqing":"Chongqing"};
 const CITIES=Object.keys(CPM);
 const PROVINCES=["Hebei","Zhejiang","Guangdong","Shandong","Henan","Jiangsu","Jiangxi","Fujian","Tianjin","Sichuan","אחר"];
-const FIELDS_OF_WORK=["פלסטיק","עץ","ברזל","מרופדים","אחר"];
+const FIELDS_OF_WORK=["פלסטיק","עץ","ברזל","שולחנות","ריהוט ביתי","מרופדים","אחר"];
 
 /* ── Helpers ── */
 function getProvince(city){if(!city)return"";const k=CITIES.find(c=>c.toLowerCase()===city.trim().toLowerCase());return k?CPM[k]:"";}
