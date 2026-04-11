@@ -1035,23 +1035,59 @@ export default function App(){
             </div>
           </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"140px 1fr auto",gap:10,marginBottom:14,alignItems:"end"}}>
+        
+		<div style={{display:"grid",gridTemplateColumns:"140px 1fr auto",gap:10,marginBottom:0,alignItems:"start"}}>
           <Field label="תאריך"><input type="date" style={IS} value={form.date} onChange={e=>sf("date",e.target.value)}/></Field>
           <Field label="מקור / תערוכה"><input style={IS} value={form.source||""} onChange={e=>sf("source",e.target.value)} placeholder="שם התערוכה"/></Field>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,paddingBottom:2}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,justifyContent:"center"}}>
+		  
             <label style={{fontSize:12,fontWeight:500,color:"#666",textTransform:"uppercase",letterSpacing:"0.04em"}}>פעיל</label>
             <div onClick={()=>sf("active",!form.active)} style={{width:44,height:26,borderRadius:13,background:form.active?"#1d4ed8":"#d1d5db",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
               <div style={{position:"absolute",top:3,left:form.active?20:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
             </div>
           </div>
         </div>
-        <Field label="שם ספק *" error={errors.name}><input style={IS} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="שם החברה"/></Field>
-        <Field label="שם איש קשר"><input style={IS} value={form.contact} onChange={e=>sf("contact",e.target.value)} placeholder="שם מלא"/></Field>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <Field label="טלפון"><input style={IS} value={form.phone||""} onChange={e=>sf("phone",e.target.value)} type="tel" placeholder="+86..."/></Field>
-          <Field label="אימייל"><input style={IS} value={form.email} onChange={e=>sf("email",e.target.value)} type="email" placeholder="email@..."/></Field>
-        </div>
-        <Field label="אתר אינטרנט"><input style={IS} value={form.website||""} onChange={e=>sf("website",e.target.value)} type="url" placeholder="www.example.com"/></Field>
+		<Field label="שם ספק *" error={errors.name}><input style={IS} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="שם החברה"/></Field>
+		<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+		  <Field label="שם איש קשר">
+			<input
+			  style={IS}
+			  value={form.contact}
+			  onChange={e=>sf("contact",e.target.value)}
+			  placeholder="שם מלא"
+			/>
+		  </Field>
+		  <Field label="טלפון">
+			<input
+			  style={IS}
+			  value={form.phone||""}
+			  onChange={e=>sf("phone",e.target.value)}
+			  type="tel"
+			  placeholder="+86..."
+			/>
+		  </Field>
+		</div>
+
+		<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+		  <Field label="אימייל">
+			<input
+			  style={IS}
+			  value={form.email}
+			  onChange={e=>sf("email",e.target.value)}
+			  type="email"
+			  placeholder="email@..."
+			/>
+		  </Field>
+		  <Field label="אתר אינטרנט">
+			<input
+			  style={IS}
+			  value={form.website||""}
+			  onChange={e=>sf("website",e.target.value)}
+			  type="url"
+			  placeholder="www.example.com"
+			/>
+		  </Field>
+		</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="עיר"><CityInput value={form.city} onChange={v=>sf("city",v)} onCitySelect={c=>{sf("city",c);const p=getProvince(c);if(p)sf("province",p);}}/></Field>
           <Field label="מחוז"><ProvinceSelect value={form.province} onChange={v=>sf("province",v)}/></Field>
