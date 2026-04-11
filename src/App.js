@@ -413,7 +413,7 @@ function LoginScreen({onLogin}){
 }
 
 /* ══════════════ MAIN APP ══════════════ */
-const EMPTY_FORM={name:"",contact:"",phone:"",email:"",city:"",province:"",fields:[],description:"",rating:0,cardImageUrl:"",_cardPreview:null,_cardPreviewType:null,source:"",date:todayStr()};
+const EMPTY_FORM={name:"",contact:"",phone:"",email:"",website:"",city:"",province:"",fields:[],description:"",rating:0,cardImageUrl:"",_cardPreview:null,_cardPreviewType:null,source:"",active:true,date:todayStr()};
 const EMPTY_PROD={description:"",images:[],rating:0};
 
 export default function App(){
@@ -439,6 +439,7 @@ export default function App(){
   const [msgOk,setMsgOk]=useState(true);
   const [exporting,setExporting]=useState(false);
   const [dupModal,setDupModal]=useState(null);
+  const [filterActive,setFilterActive]=useState(false);
   const importSupRef=useRef();
 
   const showMsg=(text,ok=true)=>{setMsg(text);setMsgOk(ok);setTimeout(()=>setMsg(""),5000);};
@@ -475,7 +476,7 @@ export default function App(){
       setForm(f=>({...f,_cardPreview:oriented.base64,_cardPreviewType:oriented.mimeType}));
       if(!user?.key){showMsg("אין Gemini API key",false);setExtracting(false);return;}
       const txt=await callGemini(
-        "Business card image. Extract: name (company/supplier), contact (person name), email, phone, city (English city name only). Return ONLY valid JSON: {name,contact,email,phone,city}. No markdown.",
+        "Business card image. Extract: name (company/supplier), contact (person name), email, phone, website (company website URL if visible), city (English city name only). Return ONLY valid JSON: {name,contact,email,phone,website,city}. No markdown.",
         oriented.base64,oriented.mimeType,user.key
       );
       try{
@@ -484,7 +485,7 @@ export default function App(){
         const matched=CITIES.find(c=>c.toLowerCase()===rawCity.toLowerCase())||rawCity;
         setForm(f=>({...f,_cardPreview:oriented.base64,_cardPreviewType:oriented.mimeType,
           name:p.name||f.name,contact:p.contact||f.contact,phone:p.phone||f.phone,
-          email:p.email||f.email,city:matched||f.city,province:getProvince(matched)||f.province}));
+          email:p.email||f.email,website:p.website||f.website,city:matched||f.city,province:getProvince(matched)||f.province}));
         showMsg(`פרטים חולצו ✓ (סיבוב ${oriented.angle}°)`,true);
       }catch(_){showMsg(`התמונה סובבה (${oriented.angle}°), לא ניתן לפרסר`,false);}
     }catch(e){showMsg("שגיאה: "+e.message,false);}
@@ -503,8 +504,9 @@ export default function App(){
         cardUrl=await uploadImg(form._cardPreview,form._cardPreviewType||"image/jpeg",path);
       }
       const payload={name:form.name,contact:form.contact,phone:form.phone,email:form.email,
-        city:form.city,province:form.province,fields:form.fields,description:form.description,
-        rating:form.rating,        source:form.source||user?.exhibition||"",date:form.date||todayStr(),
+        website:form.website||"",city:form.city,province:form.province,fields:form.fields,
+        description:form.description,rating:form.rating,active:form.active===true,
+        source:form.source||user?.exhibition||"",date:form.date||todayStr(),
         card_image_url:cardUrl,updated_at:now,updated_by:userName};
       if(selSup&&!forceNew){
         await sb.update("suppliers",selSup.id,payload);
@@ -532,7 +534,7 @@ export default function App(){
     setForm({name:s.name||"",contact:s.contact||"",phone:s.phone||"",email:s.email||"",
       city:s.city||"",province:s.province||"",fields:s.fields||[],description:s.description||"",
       rating:s.rating||0,cardImageUrl:s.card_image_url||"",_cardPreview:null,_cardPreviewType:null,
-      source:s.source||"",date:s.date||todayStr()});
+      source:s.source||"",website:s.website||"",active:s.active===true,date:s.date||todayStr()});
     setErrors({});await loadProducts(s.id);setView("form");
   };
 
@@ -597,7 +599,8 @@ export default function App(){
     return(!q||s.name?.toLowerCase().includes(q)||s.contact?.toLowerCase().includes(q))&&
       (!filterProvince||s.province===filterProvince)&&
       (!filterField||(s.fields||[]).includes(filterField))&&
-      (!eq||(s.source||"").toLowerCase().includes(eq));
+      (!eq||(s.source||"").toLowerCase().includes(eq))&&
+      (!filterActive||s.active===true);
   });
 
   /* ── CSV ── */
@@ -967,8 +970,15 @@ export default function App(){
 
       <Section title="סינון" icon="🔎" accent="#2563eb">
         <div style={{padding:0}}>
-          <input value={filterExhibition} onChange={e=>setFilterExhibition(e.target.value)} placeholder="סינון לפי תערוכה..."
-            style={{width:"100%",marginBottom:8,fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none",boxSizing:"border-box"}}/>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <input value={filterExhibition} onChange={e=>setFilterExhibition(e.target.value)} placeholder="סינון לפי תערוכה..."
+              style={{flex:1,fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none"}}/>
+            <div onClick={()=>setFilterActive(v=>!v)} title="הצג פעילים בלבד"
+              style={{width:40,height:24,borderRadius:12,background:filterActive?"#1d4ed8":"#d1d5db",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:2,left:filterActive?18:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </div>
+            <span style={{fontSize:12,color:"#555",whiteSpace:"nowrap"}}>פעיל</span>
+          </div>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="שם ספק"
             style={{width:"100%",marginBottom:8,fontSize:13,padding:"7px 8px",borderRadius:8,border:"1.5px solid rgba(0,0,0,0.14)",background:"#f8f7f5",color:"#333",outline:"none",boxSizing:"border-box"}}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -979,8 +989,8 @@ export default function App(){
               <option value="">כל תחומי העיסוק</option>{(allUsedFields.length?allUsedFields:FIELDS_OF_WORK).map(f=><option key={f} value={f}>{f}</option>)}
             </select>
           </div>
-          {(search||filterProvince||filterField||filterExhibition)&&
-            <button onClick={()=>{setSearch("");setFilterProvince("");setFilterField("");setFilterExhibition("");}} style={{marginTop:8,fontSize:12,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>✕ נקה סינון</button>}
+          {(search||filterProvince||filterField||filterExhibition||filterActive)&&
+            <button onClick={()=>{setSearch("");setFilterProvince("");setFilterField("");setFilterExhibition("");setFilterActive(false);}} style={{marginTop:8,fontSize:12,color:"#2563eb",background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>✕ נקה סינון</button>}
         </div>
       </Section>
 
@@ -1025,14 +1035,23 @@ export default function App(){
             </div>
           </div>
         </div>
-        <Field label="תאריך"><input type="date" style={IS} value={form.date} onChange={e=>sf("date",e.target.value)}/></Field>
-        <Field label="מקור / תערוכה"><input style={IS} value={form.source||""} onChange={e=>sf("source",e.target.value)} placeholder="שם התערוכה או המקור"/></Field>
+        <div style={{display:"grid",gridTemplateColumns:"140px 1fr auto",gap:10,marginBottom:14,alignItems:"end"}}>
+          <Field label="תאריך"><input type="date" style={IS} value={form.date} onChange={e=>sf("date",e.target.value)}/></Field>
+          <Field label="מקור / תערוכה"><input style={IS} value={form.source||""} onChange={e=>sf("source",e.target.value)} placeholder="שם התערוכה"/></Field>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,paddingBottom:2}}>
+            <label style={{fontSize:12,fontWeight:500,color:"#666",textTransform:"uppercase",letterSpacing:"0.04em"}}>פעיל</label>
+            <div onClick={()=>sf("active",!form.active)} style={{width:44,height:26,borderRadius:13,background:form.active?"#1d4ed8":"#d1d5db",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0}}>
+              <div style={{position:"absolute",top:3,left:form.active?20:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+            </div>
+          </div>
+        </div>
         <Field label="שם ספק *" error={errors.name}><input style={IS} value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="שם החברה"/></Field>
         <Field label="שם איש קשר"><input style={IS} value={form.contact} onChange={e=>sf("contact",e.target.value)} placeholder="שם מלא"/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="טלפון"><input style={IS} value={form.phone||""} onChange={e=>sf("phone",e.target.value)} type="tel" placeholder="+86..."/></Field>
           <Field label="אימייל"><input style={IS} value={form.email} onChange={e=>sf("email",e.target.value)} type="email" placeholder="email@..."/></Field>
         </div>
+        <Field label="אתר אינטרנט"><input style={IS} value={form.website||""} onChange={e=>sf("website",e.target.value)} type="url" placeholder="www.example.com"/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="עיר"><CityInput value={form.city} onChange={v=>sf("city",v)} onCitySelect={c=>{sf("city",c);const p=getProvince(c);if(p)sf("province",p);}}/></Field>
           <Field label="מחוז"><ProvinceSelect value={form.province} onChange={v=>sf("province",v)}/></Field>
@@ -1060,7 +1079,7 @@ export default function App(){
           {products.map(p=>{const fi=(p.images||[])[0];return(
             <div key={p.id} style={{border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,overflow:"hidden",background:"#fafaf9"}}>
               {fi?.url
-                ?<div style={{width:"100%",aspectRatio:"1/1",display:"flex",alignItems:"center",justifyContent:"center",background:"#fff"}}>
+                ?<div onClick={()=>openProdModal(p)} style={{width:"100%",aspectRatio:"1/1",display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",cursor:"pointer"}}>
                   <img src={fi.url} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",display:"block"}}/>
                 </div>
                 :<div style={{height:70,background:"#f0eeec",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#bbb"}}>אין תמונה</div>}
