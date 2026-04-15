@@ -35,7 +35,6 @@ const CITIES=Object.keys(CPM);
 const PROVINCES=["Hebei","Zhejiang","Guangdong","Shandong","Henan","Jiangsu","Jiangxi","Fujian","Tianjin","Sichuan","אחר"];
 const FIELDS_OF_WORK=["פלסטיק","עץ","ברזל","שולחנות","ריהוט ביתי","מרופדים","אחר"];
 
-
 /* ── Helpers ── */
 function getProvince(city){if(!city)return"";const k=CITIES.find(c=>c.toLowerCase()===city.trim().toLowerCase());return k?CPM[k]:"";}
 function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
@@ -445,7 +444,6 @@ export default function App(){
 
   const showMsg=(text,ok=true)=>{setMsg(text);setMsgOk(ok);setTimeout(()=>setMsg(""),5000);};
   const userName=user?.name||"user";
-  const [galleryImages, setGalleryImages] = useState(null);
 
   const loadSuppliers=useCallback(async()=>{
     try{const data=await sb.select("suppliers","select=*");setSuppliers(data||[]);}
@@ -1117,29 +1115,9 @@ export default function App(){
           {products.map(p=>{const fi=(p.images||[])[0];return(
             <div key={p.id} style={{border:"1px solid rgba(0,0,0,0.1)",borderRadius:12,overflow:"hidden",background:"#fafaf9"}}>
               {fi?.url
-                ?
-				<div onClick={() => setGalleryImages(p.images || [])}
-				  style={{
-					width:"100%",
-					aspectRatio:"1/1",
-					display:"flex",
-					alignItems:"center",
-					justifyContent:"center",
-					background:"#fff",
-					cursor:"zoom-in"
-				  }}
-				>
-				  <img
-					src={fi.url}
-					style={{
-					  maxWidth:"100%",
-					  maxHeight:"100%",
-					  objectFit:"contain",
-					  display:"block"
-					}}
-				  />
-				</div>
-
+                ?<div onClick={()=>openProdModal(p)} style={{width:"100%",aspectRatio:"1/1",display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",cursor:"pointer"}}>
+                  <img src={fi.url} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",display:"block"}}/>
+                </div>
                 :<div style={{height:70,background:"#f0eeec",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#bbb"}}>אין תמונה</div>}
               <div style={{padding:"10px"}}>
                 <div style={{fontSize:11,color:"#aaa",marginBottom:2}}>#{p.id} · {p.images?.length||0} תמונות</div>
@@ -1193,59 +1171,5 @@ export default function App(){
         onSave={(b64,mt)=>{setProdForm(f=>{const imgs=[...f.images];imgs[idx]={data:b64,type:mt};return{...f,images:imgs};});setEditImgCtx(null);}}
         onClose={()=>setEditImgCtx(null)}/>);
     })()}
-	
-	
-	{galleryImages && (
-	  <Overlay onClose={() => setGalleryImages(null)}>
-		<div style={{textAlign:"center"}}>
-		  <div style={{fontWeight:600,fontSize:16,marginBottom:12}}>
-			תמונות מוצר
-		  </div>
-
-		  <div style={{
-			display:"flex",
-			gap:12,
-			overflowX:"auto",
-			scrollSnapType:"x mandatory",
-			paddingBottom:10
-		  }}>
-			{galleryImages.filter(img => img.url).map((img, i) => (
-			  <div key={i} style={{
-				minWidth:"100%",
-				scrollSnapAlign:"center",
-				display:"flex",
-				alignItems:"center",
-				justifyContent:"center",
-				background:"#fff",
-				borderRadius:12,
-				border:"1px solid rgba(0,0,0,0.1)",
-				padding:10,
-				boxSizing:"border-box"
-			  }}>
-				<img src={img.url} style={{
-				  maxWidth:"100%",
-				  maxHeight:"70vh",
-				  objectFit:"contain",
-				  display:"block"
-				}}/>
-			  </div>
-			))}
-		  </div>
-
-		  <button onClick={() => setGalleryImages(null)} style={{
-			marginTop:12,
-			padding:"9px 18px",
-			borderRadius:9,
-			border:"none",
-			background:"#1d4ed8",
-			color:"#fff",
-			cursor:"pointer",
-			fontWeight:500
-		  }}>
-			סגור
-		  </button>
-		</div>
-	  </Overlay>
-	)}
   </div>);
 }
